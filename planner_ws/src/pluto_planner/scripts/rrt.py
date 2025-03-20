@@ -10,11 +10,12 @@ from math import log
 
 
 class RRT:
-    def __init__(self, root_position, bbx_min, bbx_max, radius, extension_range):
+    def __init__(self, root_position, bbx_min, bbx_max, radius, extension_range, goal=None):
         self._bbx_min = bbx_min
         self._bbx_max = bbx_max
         self._radius = radius
         self._extension_range = extension_range
+        self._goal = goal
 
         # Create r-tree
         p = index.Property()
@@ -24,11 +25,17 @@ class RRT:
         self._id = 0
         self._root = self.create_new_node(root_position)
         self.insert(self._root, None)
+    
+    def update_goal(goal):
+        self._goal = goal
 
-    def sample(self):
-        position = np.array([[0, 0]], dtype=np.float)
-        for i in range(0, len(position[0])):
-            position[0][i] = random.uniform(self._bbx_min[i], self._bbx_max[i])
+    def sample(self, bias=0.2):
+        if self._goal != None and random.random() < bias: # Bias towards goal position
+            position = np.array([[self._goal.x, self._goal.y]], dtype=np.float)
+        else:
+            position = np.array([[0, 0]], dtype=np.float)
+            for i in range(0, len(position[0])):
+                position[0][i] = random.uniform(self._bbx_min[i], self._bbx_max[i])
         return self.create_new_node(position)
 
     def create_new_node(self, position):

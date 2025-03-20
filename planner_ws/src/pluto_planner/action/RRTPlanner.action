@@ -1,5 +1,5 @@
 # Goal definition
-Point goal_pos
+geometry_msgs/Point goal_pos
 ---
 # Result definition
 float64 gain

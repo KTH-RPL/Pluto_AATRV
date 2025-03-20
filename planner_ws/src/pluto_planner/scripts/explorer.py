@@ -29,7 +29,8 @@ l = 0.25
 tree_pub = None
 best_branch_pub = None
 
-
+def get_next_goal(goal):
+    global action_server, 
 def get_next_goal(goal):
     global action_server, grid_map, sensor
     feedback = irob_assignment_1.msg.GetNextGoalFeedback()
