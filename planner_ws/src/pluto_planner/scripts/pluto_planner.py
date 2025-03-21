@@ -205,6 +205,8 @@ def gnss_feedback(msg):
         rospy.logerr(f"Error in gnss_feedback: {e}")
 
 
+path_pub = rospy.Publisher("rrt_path", Path, queue_size=10)
+
 def execute_planner(goal):
     rospy.loginfo("Received goal: (%.2f, %.2f)", goal.goal_pos.x, goal.goal_pos.y)
     global robot_x, robot_y
@@ -229,6 +231,7 @@ def execute_planner(goal):
         result = pluto_planner.msg.RRTPlannerResult()
         result.gain = euclidean_dist(path[-1][:2], goal_pos[:2])
         result.path = path_to_ros_path(path)
+        path_pub.publish(result.path)  # Publish the path
         planner_as.set_succeeded(result)
         rospy.loginfo("Path found, sending result.")
     else:
