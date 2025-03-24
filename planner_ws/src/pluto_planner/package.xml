@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <package format="2">
-	<name>irob_assignment_1</name>
+	<name>pluto_planner</name>
 	<version>0.0.0</version>
-	<description>The irob_assignment_1 package</description>
+	<description>PLUTO Planner Package, modified from IROB Assignment 1 by Daniel Duberg from DD2410 Course at KTH</description>
 
 	<!-- One maintainer tag required, multiple allowed, one person per tag -->
 	<!-- Example:  -->
 	<!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-	<maintainer email="dduberg@kth.se">Daniel Duberg</maintainer>
+	<maintainer email="pwlsa@kth.se">Prasetyo Wibowo Laksono Sanjaya</maintainer>
 
 
 	<!-- One license tag required, multiple allowed, one license per tag -->

@@ -1,0 +1,15 @@
+# ROS build and development folders
+/planner_ws/build/
+/planner_ws/devel/
+
+# Logs and temporary files
+/planner_ws/log/
+/planner_ws/*.log
+
+# Python cache files
+/planner_ws/__pycache__/
+/planner_ws/*.pyc
+
+# CMake temporary files
+/planner_ws/CMakeFiles/
+/planner_ws/CMakeCache.txt

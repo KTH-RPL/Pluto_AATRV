@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(irob_assignment_1)
+project(pluto_planner)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -72,7 +72,7 @@ add_service_files(
 ## Generate actions in the 'action' folder
 add_action_files(
   FILES
-  GetNextGoal.action
+  RRTPlanner.action
 )
 
 ## Generate added messages and services with any dependencies listed here
@@ -115,7 +115,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES irob_assignment_1
+#  LIBRARIES pluto_planner
   CATKIN_DEPENDS actionlib actionlib_msgs geometry_msgs message_runtime nav_msgs rospy std_msgs std_srvs tf2 tf2_geometry_msgs tf2_ros
 #  DEPENDS system_lib
 )

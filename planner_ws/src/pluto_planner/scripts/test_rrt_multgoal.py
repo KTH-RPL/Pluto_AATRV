@@ -3,10 +3,8 @@ import math
 import matplotlib.pyplot as plt
 from local_planner import rrt_planner, euclidean_dist, smooth_path  # Importing planner and smoothing function
 
-global_obstacles = None
-
 # Define sample map boundaries
-map_param = (0, 0, 10, 10)  # (xmin, ymin, xmax, ymax)
+map_param = (0, 0, 15, 15)  # (xmin, ymin, xmax, ymax)
 
 # Euclidean distance function to check collision between points
 def euclidean_dist(a, b):
@@ -15,7 +13,7 @@ def euclidean_dist(a, b):
 # Check if the point collides with any obstacle
 def is_collision(point, obstacles, radius=0.5):
     x, y = point
-    if len(obstacles)>0:
+    if len(obstacles) > 0:
         for (ox, oy, oradius) in obstacles:
             if euclidean_dist((x, y), (ox, oy)) < (oradius + radius):  # Check if within radius of an obstacle
                 return True
@@ -39,17 +37,26 @@ def generate_random_obstacle(map_param, obstacles, radius_min=0.2, radius_max=1.
             return (x, y, radius)
 
 # Randomize start, goal, and obstacles
-def randomize_start_goal_obstacles(map_param, num_obstacles=10):
-    # Random start and goal points
-    start = generate_random_position(map_param, [])
-    goal = generate_random_position(map_param, [(start[0],start[1],0)])  # Ensure goal doesn't overlap with start
+def randomize_start_goal_obstacles(map_param, num_obstacles=10, num_goals=3):
+    
 
     # Random obstacles
     obstacles = []
     for _ in range(num_obstacles):
         obstacles.append(generate_random_obstacle(map_param, obstacles))
+        
+    # Random start point
+    start = generate_random_position(map_param, obstacles)
     
-    return start, goal, obstacles
+    # Random goals
+    goals = []
+    for _ in range(num_goals):
+        goal = generate_random_position(map_param, [(start[0], start[1], 0)] + obstacles)
+        goals.append(goal)
+    
+
+    
+    return start, goals, obstacles
 
 # Visualization Utility Function
 def plot_obstacles(obstacles):
@@ -64,7 +71,7 @@ def plot_obstacles(obstacles):
         circle = plt.Circle((obs_x, obs_y), obs_r, color='purple', alpha=0.5)
         plt.gca().add_artist(circle)
 
-def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obstacles=None):
+def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goals, obstacles=None):
     """
     Visualize the RRT tree, explored nodes, final path, and smoothed path.
     
@@ -74,7 +81,7 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
         path (list): Final unsmoothed path from start to goal.
         smoothed_path (list): Final smoothed path.
         start (tuple): Starting position (x, y).
-        goal (tuple): Goal position (x, y).
+        goals (list): List of goal positions (x, y).
         obstacles (list, optional): List of obstacles as (x, y, radius). Defaults to None.
     """
 
@@ -105,9 +112,13 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
         x_smooth, y_smooth = zip(*[(p[0], p[1]) for p in smoothed_path])
         plt.plot(x_smooth, y_smooth, color="green", linewidth=2, linestyle="--", label="Smoothed Path")
 
-    # Highlight the start and goal points
+    # Highlight the start point
     plt.scatter(*start[:2], color="green", s=100, label="Start", edgecolors="black")
-    plt.scatter(*goal[:2], color="magenta", s=100, label="Goal", edgecolors="black")
+
+    # Plot the goals with different colors
+    goal_colors = ['magenta', 'orange', 'blue', 'cyan', 'yellow']  # Extend if there are more goals
+    for i, goal in enumerate(goals):
+        plt.scatter(*goal[:2], color=goal_colors[i % len(goal_colors)], s=100, label=f"Goal {i+1}", edgecolors="black")
 
     plt.title("RRT Path Planning: Original vs. Smoothed Path with Obstacles")
     plt.xlabel("X Coordinates")
@@ -118,29 +129,43 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
     plt.show()
 
 
-# Randomize start, goal, and obstacles
-
-start, goal, obstacles = randomize_start_goal_obstacles(map_param, num_obstacles=30)
+# Randomize start, goal (multiple goals), and obstacles
+start, goals, obstacles = randomize_start_goal_obstacles(map_param, num_obstacles=30, num_goals=3)
 
 # Override start and goal
-start = (map_param[0], map_param[1], 0.0)
-goal = (map_param[2], map_param[3], 0.0)
+start = (map_param[0]+1, map_param[1]+1, 0.0)
+goals = [(map_param[0]+1, map_param[3]-1, 0.0), (map_param[2]-1, map_param[3]-1, 0.0), (map_param[2]-1, map_param[1]+1, 0.0)]
 
-# Run the RRT planner
-path, tree, nodes = rrt_planner(start, goal, map_param, obstacles=obstacles)  # Pass obstacles to the planner
 
-# Test results
-if path:
-    print(f"✅ Path found with {len(path)} waypoints.")
-    print("Path:", path)
-else:
-    print("❌ No path found!")
+# Initialize path variables
+total_path = []
+smoothed_total_path = []
 
-# Smooth the path using the smoothing function from local_planner
-smoothed_path = smooth_path(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
-print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
-print("Smoothed Path:", smoothed_path)
+# Iterate through the goal points and plan the path sequentially
+current_start = start
+for goal in goals:
+    print(f"\nNavigating to goal: {goal}")
+    
+    # Run the RRT planner for each goal
+    path, tree, nodes = rrt_planner(current_start, goal, map_param, obstacles=obstacles)  # Pass obstacles to the planner
+    
+    # Test results
+    if path:
+        print(f"✅ Path found with {len(path)} waypoints.")
+        print("Path:", path)
+        total_path.extend(path)
+        
+        # Smooth the path using the smoothing function from local_planner
+        smoothed_path = smooth_path(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+        print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
+        print("Smoothed Path:", smoothed_path)
+        smoothed_total_path.extend(smoothed_path)
+        
+        # Update the start point to the last point of the current goal
+        current_start = path[-1]
+    else:
+        print("❌ No path found!")
 
 # Visualize the RRT exploration, original path, and smoothed path with obstacles
-draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obstacles=obstacles)
+draw_rrt_tree_and_paths(tree, nodes, total_path, smoothed_total_path, start, goals, obstacles=obstacles)
 
