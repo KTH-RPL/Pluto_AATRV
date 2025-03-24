@@ -1,7 +1,7 @@
 import random
 import math
 import matplotlib.pyplot as plt
-from local_planner import rrt_planner, euclidean_dist, smooth_path  # Importing planner and smoothing function
+from local_planner import rrt_planner, euclidean_dist, smooth_path, smooth_path_with_spline  # Importing planner and smoothing function
 
 # Define sample map boundaries
 map_param = (0, 0, 15, 15)  # (xmin, ymin, xmax, ymax)
@@ -91,16 +91,16 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goals, obst
     if obstacles:
         plot_obstacles(obstacles)
 
-    # Plot branches (edges between nodes in the tree)
-    for node, parent in tree.items():
-        if parent is not None:
-            x1, y1, _ = node
-            x2, y2, _ = parent
-            plt.plot([x1, x2], [y1, y2], color="blue", linestyle="dotted", alpha=0.4)
+    # # Plot branches (edges between nodes in the tree)
+    # for node, parent in tree.items():
+    #     if parent is not None:
+    #         x1, y1, _ = node
+    #         x2, y2, _ = parent
+    #         plt.plot([x1, x2], [y1, y2], color="blue", linestyle="dotted", alpha=0.4)
 
-    # Plot explored nodes
-    x_nodes, y_nodes = zip(*[(n[0], n[1]) for n in nodes])
-    plt.scatter(x_nodes, y_nodes, color="gray", s=10, label="Explored Nodes")
+    # # Plot explored nodes
+    # x_nodes, y_nodes = zip(*[(n[0], n[1]) for n in nodes])
+    # plt.scatter(x_nodes, y_nodes, color="gray", s=10, label="Explored Nodes")
 
     # Plot the final unsmoothed path
     if path:
@@ -111,6 +111,7 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goals, obst
     if smoothed_path:
         x_smooth, y_smooth = zip(*[(p[0], p[1]) for p in smoothed_path])
         plt.plot(x_smooth, y_smooth, color="green", linewidth=2, linestyle="--", label="Smoothed Path")
+        plt.scatter(x_smooth, y_smooth, color="red", s=20, label="Path Points")  # 's' sets dot size
 
     # Highlight the start point
     plt.scatter(*start[:2], color="green", s=100, label="Start", edgecolors="black")
@@ -156,7 +157,7 @@ for goal in goals:
         total_path.extend(path)
         
         # Smooth the path using the smoothing function from local_planner
-        smoothed_path = smooth_path(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+        smoothed_path = smooth_path_with_spline(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
         print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
         print("Smoothed Path:", smoothed_path)
         smoothed_total_path.extend(smoothed_path)

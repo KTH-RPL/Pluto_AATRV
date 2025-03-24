@@ -1,7 +1,7 @@
 import random
 import math
 import matplotlib.pyplot as plt
-from local_planner import rrt_planner, euclidean_dist, smooth_path  # Importing planner and smoothing function
+from local_planner import rrt_planner, euclidean_dist, smooth_path, smooth_path_with_spline  # Importing planner and smoothing function
 
 global_obstacles = None
 
@@ -31,12 +31,15 @@ def generate_random_position(map_param, obstacles, radius=0.5):
             return (x, y, 0.0)
 
 # Generate a random obstacle that does not overlap with others or the start/goal
-def generate_random_obstacle(map_param, obstacles, radius_min=0.2, radius_max=1.0):
+def generate_random_obstacle(map_param, obstacles, radius_min=0.2, radius_max=1.0, max_iter=100):
     radius = random.uniform(radius_min, radius_max)
-    while True:
+    attempts = 0
+    while attempts < max_iter:
         x, y, _ = generate_random_position(map_param, obstacles, radius)
         if not is_collision((x, y), obstacles, radius):
             return (x, y, radius)
+        attempts += 1
+    return None  # Return None if max iterations exceeded
 
 # Randomize start, goal, and obstacles
 def randomize_start_goal_obstacles(map_param, num_obstacles=10):
@@ -47,7 +50,9 @@ def randomize_start_goal_obstacles(map_param, num_obstacles=10):
     # Random obstacles
     obstacles = []
     for _ in range(num_obstacles):
-        obstacles.append(generate_random_obstacle(map_param, obstacles))
+        obs = generate_random_obstacle(map_param, obstacles)
+        if obs isnot None:
+            obstacles.append(obs)
     
     return start, goal, obstacles
 
@@ -84,12 +89,12 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
     if obstacles:
         plot_obstacles(obstacles)
 
-    # Plot branches (edges between nodes in the tree)
-    for node, parent in tree.items():
-        if parent is not None:
-            x1, y1, _ = node
-            x2, y2, _ = parent
-            plt.plot([x1, x2], [y1, y2], color="blue", linestyle="dotted", alpha=0.4)
+    # # Plot branches (edges between nodes in the tree)
+    # for node, parent in tree.items():
+    #     if parent is not None:
+    #         x1, y1, _ = node
+    #         x2, y2, _ = parent
+    #         plt.plot([x1, x2], [y1, y2], color="blue", linestyle="dotted", alpha=0.4)
 
     # Plot explored nodes
     x_nodes, y_nodes = zip(*[(n[0], n[1]) for n in nodes])
@@ -104,6 +109,8 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
     if smoothed_path:
         x_smooth, y_smooth = zip(*[(p[0], p[1]) for p in smoothed_path])
         plt.plot(x_smooth, y_smooth, color="green", linewidth=2, linestyle="--", label="Smoothed Path")
+        plt.scatter(x_smooth, y_smooth, color="red", s=20, label="Path Points")  # 's' sets dot size
+
 
     # Highlight the start and goal points
     plt.scatter(*start[:2], color="green", s=100, label="Start", edgecolors="black")
@@ -137,10 +144,10 @@ else:
     print("❌ No path found!")
 
 # Smooth the path using the smoothing function from local_planner
-smoothed_path = smooth_path(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+smoothed_path = smooth_path_with_spline(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+
 print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
 print("Smoothed Path:", smoothed_path)
 
 # Visualize the RRT exploration, original path, and smoothed path with obstacles
 draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obstacles=obstacles)
-
