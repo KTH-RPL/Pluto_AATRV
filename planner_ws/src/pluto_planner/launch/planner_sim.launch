@@ -1,0 +1,13 @@
+<launch>
+    <!-- Start the ROS master -->
+    <param name="use_sim_time" value="true"/>
+
+    <!-- Start the robot controllers -->
+    <node name="local_planner" pkg="pluto_planner" type="scripts/local_planner.py" output="screen"/>
+    <node name="global_planner" pkg="pluto_planner" type="scripts/global_planner.py" output="screen"/>
+    <node name="sim_control" pkg="pluto_planner" type="scripts/sim_control.py" output="screen"/>
+
+    <!-- RViz visualization -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find pluto_planner)/rviz/plan_sim.rviz" />
+
+</launch>
