@@ -1,4 +1,4 @@
-from .hdmap import obstacles
+# from hdmap import obstacles
 import numpy as np
 import math
 import rospy
@@ -18,10 +18,14 @@ def euclidean_dist(a, b):
 # Check if a node is valid
 def is_node_valid(node, map_param=None, obstacles=None):
     if map_param is None:
-        xmin, ymin, xmax, ymax = -math.Inf, -math.Inf, math.Inf, math.Inf
+        xmin, ymin, xmax, ymax = -math.inf, -math.inf, math.inf, math.inf
     else:
         xmin, ymin, xmax, ymax = map_param
-    x, y, theta = node
+        
+    if len(node)==3:
+        x, y, _ = node
+    elif len(node)==2:
+        x,y = node
 
     # Check for outside boundaries
     if x < xmin or x > xmax or y < ymin or y > ymax:
@@ -451,5 +455,5 @@ def execute_planning(start, goal, check_node_valid=is_node_valid):
     # Smooth the path using the smoothing function from local_planner
     smoothed_path = smooth_path_with_spline(path, map_param, check_node_valid=check_node_valid)  # Pass obstacles to smooth_path
 
-    return smoothed_path
+    return smoothed_path, tree, nodes, path
 

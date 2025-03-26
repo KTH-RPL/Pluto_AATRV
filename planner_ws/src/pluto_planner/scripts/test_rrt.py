@@ -1,7 +1,9 @@
 import random
 import math
 import matplotlib.pyplot as plt
-from local_planner import rrt_planner, euclidean_dist, smooth_path, smooth_path_with_spline  # Importing planner and smoothing function
+# from local_planner import rrt_planner, euclidean_dist, smooth_path, smooth_path_with_spline  # Importing planner and smoothing function
+
+from local_planner_func import execute_planning, euclidean_dist
 
 global_obstacles = None
 
@@ -51,7 +53,7 @@ def randomize_start_goal_obstacles(map_param, num_obstacles=10):
     obstacles = []
     for _ in range(num_obstacles):
         obs = generate_random_obstacle(map_param, obstacles)
-        if obs isnot None:
+        if obs is not None:
             obstacles.append(obs)
     
     return start, goal, obstacles
@@ -133,18 +135,21 @@ start, goal, obstacles = randomize_start_goal_obstacles(map_param, num_obstacles
 start = (map_param[0], map_param[1], 0.0)
 goal = (map_param[2], map_param[3], 0.0)
 
-# Run the RRT planner
-path, tree, nodes = rrt_planner(start, goal, map_param, obstacles=obstacles)  # Pass obstacles to the planner
+# # Run the RRT planner
+# path, tree, nodes = rrt_planner(start, goal, map_param, obstacles=obstacles)  # Pass obstacles to the planner
 
-# Test results
-if path:
-    print(f"✅ Path found with {len(path)} waypoints.")
-    print("Path:", path)
-else:
-    print("❌ No path found!")
+# # Test results
+# if path:
+#     print(f"✅ Path found with {len(path)} waypoints.")
+#     print("Path:", path)
+# else:
+#     print("❌ No path found!")
 
-# Smooth the path using the smoothing function from local_planner
-smoothed_path = smooth_path_with_spline(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+# # Smooth the path using the smoothing function from local_planner
+# smoothed_path = smooth_path_with_spline(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
+
+
+smoothed_path, tree, nodes, path = execute_planning (start,goal)
 
 print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
 print("Smoothed Path:", smoothed_path)
