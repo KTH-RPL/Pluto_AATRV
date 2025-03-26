@@ -55,3 +55,4 @@ class PathPublisher:
             pose.pose.orientation.z = point[2]
             path_msg.poses.append(pose)
         self.path.publish(path_msg)
+
