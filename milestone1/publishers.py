@@ -4,14 +4,15 @@ import utm
 from sensor_msgs.msg import NavSatFix, Imu
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
+from vectornav_msgs.msg import Ins
 
 
 class RobotPosePublisher:
 
     def __init__(self, offset=[0, 0]):
         self.offset = offset
-        self.gnss = rospy.Subscriber('/gnss', NavSatFix, self.gnss_callback)
-        self.orientation = rospy.Subscriber('/imu', Imu, self.orientation_callback)
+        self.gnss = rospy.Subscriber('/reach/fix', NavSatFix, self.gnss_callback)
+        self.orientation = rospy.Subscriber('/vectornav/INS', Ins, self.orientation_callback)
         self.robot_pos = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
 
     def gnss_callback(self, msg):
@@ -56,3 +57,12 @@ class PathPublisher:
             path_msg.poses.append(pose)
         self.path.publish(path_msg)
 
+
+if __name__ == '__main__':
+    rospy.init_node('robot_pose_publisher')
+    robot_pose_publisher = RobotPosePublisher()
+    path_publisher = PathPublisher()
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        robot_pose_publisher.publish_robot_pose()
+        rate.sleep()
