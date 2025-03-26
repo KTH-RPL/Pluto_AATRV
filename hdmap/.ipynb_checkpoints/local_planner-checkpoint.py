@@ -53,7 +53,7 @@ def is_node_valid(node, map_param=None, obstacles=None):
     return True
 
 # Generate neighbors for the Dubins car
-def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_node_valid):
+def generate_neighbors(node, step_size=0.5, num_samples=15, check_node_valid=is_node_valid):
     neighbors = []
     x, y = node[:2]
 
@@ -474,23 +474,18 @@ def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid):
     """
     # Step 1: Simplify path by removing unnecessary nodes using line-of-sight
     simplified_path = simplify_path(path, map_param, check_node_valid=check_node_valid)
-    print("1. Done Simplify Path")
     
     # Step 2: Convert simplified path into equidistance points
     equidistant_path = equidistant_points_dynamic(simplified_path, max_dist_per_point)
-    print("2. Done create equidistant points")
     
     # Step 3: Change edges into smooth spline
     spline_path = apply_spline_at_sharp_turns(equidistant_path, check_node_valid=check_node_valid)
-    print("3. Done smooth edges with spline")
     
     # Step 4: Ensure that there is no backtracking (i.e., points should be in a consistent direction)
     smoothed_path = ensure_no_backtracking(spline_path)
-    print("4. Done backtrack checking")
 
     # Step 5: Generate heading of the trajectory points
     finalized_path = generate_trajectory_heading(smoothed_path)
-    print("5. Done Generate Path with Heading")
 
     return finalized_path
 
@@ -516,7 +511,6 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None):
 
     # Run the RRT planner
     path, tree, nodes = rrt_planner(start, goal, map_param, check_node_valid=check_node_valid)  # Pass obstacles to the planner
-    print("0. Done generate RRT path")
 
     # Smooth the path using the smoothing function from local_planner
     smoothed_path = smooth_path_with_spline(path, map_param, check_node_valid=check_node_valid)  # Pass obstacles to smooth_path

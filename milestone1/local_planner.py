@@ -15,6 +15,14 @@ import scipy.interpolate as si
 import random
 import os
 
+import argparse
+parser = argparse.ArgumentParser(description="Local Planner for Pluto")
+parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose mode")
+args = parser.parse_args()
+verbose_g = False
+if args.verbose:
+    verbose_g = True
+
 # --------------- Global Variables ---------------------
 max_dist_per_point = 1.5
 robot_radius = 1.0
@@ -53,9 +61,9 @@ def is_node_valid(node, map_param=None, obstacles=None):
     return True
 
 # Generate neighbors for the Dubins car
-def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_node_valid):
+def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_node_valid, verbose=False):
     neighbors = []
-    x, y, theta = node
+    x, y = node[:2]
 
     for _ in range(num_samples):  # Generate multiple candidate points
         angle = random.uniform(0, 2 * math.pi)  # Random direction
@@ -71,7 +79,7 @@ def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_n
 
     return neighbors
 
-def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=0.5, goal_threshold=0.2, num_samples=5, max_iter=1000000, prob_goal_bias=0.05):
+def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=3.5, goal_threshold=0.5, num_samples=5, max_iter=1000000, prob_goal_bias=0.05, verbose=False):
     tree = {start: None}
     nodes = [start]
     explored = []
@@ -80,7 +88,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
 
     iq = 0
 
-    for _ in range(max_iter):
+    for i in range(max_iter):
+        verbose and print(f"Iteration {i}")
         # 1. Select node to explore
         ## Sample random point as direction to grow
         if random.random() < prob_goal_bias:
@@ -91,6 +100,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
                 random.uniform(ylb, yub),
                 random.uniform(-math.pi, math.pi)
             )
+            
+        verbose and print("> Direction selected")
 
         ## Find nearest node in the tree
         attempts = 0
@@ -109,13 +120,16 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
         if attempts == max_attempts:
             rospy.logwarn("Could not find a new node to explore after multiple attempts!")
             continue  # Skip this iteration
+        
+        verbose and print(f"> Exploration node selected {x_nearest}")
 
         # print(x_nearest)
 
         # Generate random neighbors based on x_nearest point
-        neighbors = generate_neighbors(x_nearest, step_size=step_size, num_samples=num_samples, check_node_valid=check_node_valid)
+        neighbors = generate_neighbors(x_nearest, step_size=step_size, num_samples=num_samples, check_node_valid=check_node_valid, verbose=verbose)
         # print(neighbors)
 
+        verbose and print(f"> Neighbors generated")
 
         for x_new in neighbors:
             # Add new node to the tree if valid
@@ -123,10 +137,12 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
             # if check_node_valid(x_new, map_param, obstacles=obstacles):
                 tree[x_new] = (x_nearest)
                 nodes.append(x_new)
+                verbose and print(f"Append node {x_new}")
 
                 # Step 5: Goal proximity check
                 if euclidean_dist(x_new[:2], goal[:2]) < goal_threshold:
                     #draw_map(car, nodes, start, goal, x_new)
+                    verbose and print(f"Goal reached on iteration {i}")
                     return reconstruct_path(tree, x_new), tree, nodes
 
             iq+=1
@@ -160,8 +176,8 @@ def is_line_of_sight(a, b, check_node_valid=is_node_valid):
     Returns:
         bool: True if there is a clear line of sight, False otherwise.
     """
-    x1, y1, _ = a
-    x2, y2, _ = b
+    x1, y1 = a[:2]
+    x2, y2 = b[:2]
 
     # Check if the line is within map boundaries
     num_points = 50
@@ -460,7 +476,7 @@ def generate_trajectory_heading(path):
 
 
 
-def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid):
+def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid, verbose=False):
     """
     Smooth the given path by first simplifying it and then applying cubic spline smoothing. 
 
@@ -474,30 +490,35 @@ def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid):
     """
     # Step 1: Simplify path by removing unnecessary nodes using line-of-sight
     simplified_path = simplify_path(path, map_param, check_node_valid=check_node_valid)
+    verbose and print("1. Simplify path done")
     
     # Step 2: Convert simplified path into equidistance points
     equidistant_path = equidistant_points_dynamic(simplified_path, max_dist_per_point)
+    verbose and print("2. Equidistant path done")
     
     # Step 3: Change edges into smooth spline
     spline_path = apply_spline_at_sharp_turns(equidistant_path, check_node_valid=check_node_valid)
+    verbose and print("3. Spline path done")
     
     # Step 4: Ensure that there is no backtracking (i.e., points should be in a consistent direction)
     smoothed_path = ensure_no_backtracking(spline_path)
+    verbose and print("4. Backtrack check done")
 
     # Step 5: Generate heading of the trajectory points
     finalized_path = generate_trajectory_heading(smoothed_path)
+    verbose and print("5. Final path done")
 
     return finalized_path
 
 
-def execute_planning(start, goal, sim_plan=False, sim_obstacles=None):
+def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=verbose_g):
     global robot_radius
     
     if sim_plan:
         def check_node_valid(node):
             return is_node_valid(node, obstacles = sim_obstacles)
     else:
-        folder = "milestone1"
+        folder = "boundaries"
         boundary_file = os.path.join(folder, "milestone1_vertices.ply")
         obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst_Vertices")]
         polygon_map = obstacles.PolygonMap(boundary_file, obstacle_files)
@@ -510,11 +531,14 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None):
     map_param = [start[0], start[1], goal[0], goal[1]]
 
     # Run the RRT planner
-    path, tree, nodes = rrt_planner(start, goal, map_param, check_node_valid=check_node_valid)  # Pass obstacles to the planner
+    verbose and print("Running RRT Planner")
+    path, tree, nodes = rrt_planner(start, goal, map_param, check_node_valid=check_node_valid, verbose=verbose)  # Pass obstacles to the planner
+    verbose and print("0. RRT path done")
 
     # Smooth the path using the smoothing function from local_planner
-    smoothed_path = smooth_path_with_spline(path, map_param, check_node_valid=check_node_valid)  # Pass obstacles to smooth_path
-
+    smoothed_path = smooth_path_with_spline(path, map_param, check_node_valid=check_node_valid, verbose=verbose)  # Pass obstacles to smooth_path
+    
+    verbose and print(f"Generated path: {smoothed_path}")
     return smoothed_path, tree, nodes, path
 
 # -------- SAMPLE USAGE --------------------
