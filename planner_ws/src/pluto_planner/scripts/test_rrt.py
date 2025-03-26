@@ -131,9 +131,15 @@ def draw_rrt_tree_and_paths(tree, nodes, path, smoothed_path, start, goal, obsta
 
 start, goal, obstacles = randomize_start_goal_obstacles(map_param, num_obstacles=30)
 
+# start = (0,0)
+# goal = (1,1)
+# obstacles=None
+
 # Override start and goal
 start = (map_param[0], map_param[1], 0.0)
 goal = (map_param[2], map_param[3], 0.0)
+
+print("STARTING RRT PLANNER")
 
 # # Run the RRT planner
 # path, tree, nodes = rrt_planner(start, goal, map_param, obstacles=obstacles)  # Pass obstacles to the planner
@@ -149,7 +155,7 @@ goal = (map_param[2], map_param[3], 0.0)
 # smoothed_path = smooth_path_with_spline(path, map_param, obstacles=obstacles)  # Pass obstacles to smooth_path
 
 
-smoothed_path, tree, nodes, path = execute_planning (start,goal)
+smoothed_path, tree, nodes, path = execute_planning (start,goal, sim_plan=True, sim_obstacles= obstacles)
 
 print(f"✅ Smoothed path with {len(smoothed_path)} waypoints.")
 print("Smoothed Path:", smoothed_path)
