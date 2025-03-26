@@ -6,6 +6,7 @@ from btree.rsequence import RSequence
 from std_srvs.srv import Empty, SetBool, SetBoolRequest 
 from geometry_msgs.msg import Pose,PoseWithCovarianceStamped
 from nav_msgs.msg import Path
+from local_planner import execute_planning
 
 class BehaviourTree(ptr.trees.BehaviourTree):
 
@@ -108,3 +109,31 @@ class generate_path(pt.behaviour.Behaviour):
         self.path = None
 
         rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
+        rospy.Subscriber("/placeholder1", Pose, self.robotPose_callback)
+
+    def goal_callback(self, msg):    
+        self.goal_pose = msg.position       
+
+    def robotPose_callback(self, msg):
+        self.robot_pose = msg.position
+
+    def update(self):   
+        if self.goal_pose and self.robot_pose:
+            self.path, _, _, _ = execute_planning(self.goal_pose, self.robot_pose)
+
+            ## publish path
+
+            return pt.common.Status.SUCCESS
+        else:
+            return pt.common.Status.FAILURE
+        
+class controls(pt.behaviour.Behaviour):
+    def __init__(self):
+        rospy.loginfo("Initialising controls behaviour.")
+        super().__init__("controls")
+
+    def update(self):
+        ## publish control commands
+        
+
+        
