@@ -1,4 +1,13 @@
-from . import obstacles
+"""
+Local Planner Function
+Author: Prasetyo Wibowo L S <pwlsa@kth.se>
+
+Assumptions:
+1. Robot is defined as a simple shape (circle)
+2. Robot position defined by the center of the circle
+"""
+
+import obstacles
 import numpy as np
 import math
 import rospy
@@ -421,9 +430,39 @@ def ensure_no_backtracking(path):
 
     return cleaned_path
 
+def generate_trajectory_heading(path):
+    """
+    To generate trajectory heading based on the path given 
+
+    Args:
+        path (list): List of waypoints in the path [(x, y)]
+
+    Returns:
+        list: List of points and heading in the format of [(x, y, theta)]. Theta defined based on t
+    """
+
+    final_path = []
+
+    for i in range(len(path)):
+        x, y = path[i][:2]
+    
+        # For last node, heading = previous node, else calculate the heading using atan2
+        if i == len(path)-1:
+            theta = final_path[i-1][-1]
+        else:
+            x2, y2 = path[i+1][:2]
+            theta =  math.atan2((y2-y), (x2-x))
+
+        final_path.append((x,y,theta))
+
+    return final_path
+
+
+
+
 def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid):
     """
-    Smooth the given path by first simplifying it and then applying cubic spline smoothing.
+    Smooth the given path by first simplifying it and then applying cubic spline smoothing. 
 
     Args:
         path (list): List of waypoints in the path.
@@ -445,21 +484,28 @@ def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid):
     # Step 4: Ensure that there is no backtracking (i.e., points should be in a consistent direction)
     smoothed_path = ensure_no_backtracking(spline_path)
 
-    return smoothed_path
+    # Step 5: Generate heading of the trajectory points
+    finalized_path = generate_trajectory_heading(smoothed_path)
+
+    return finalized_path
 
 
-def execute_planning(start, goal):
+def execute_planning(start, goal, sim_plan=False, sim_obstacles=None):
     global robot_radius
     
-    folder = "milestone1"
-    boundary_file = os.path.join(folder, "milestone1_vertices.ply")
-    obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst_Vertices")]
-    polygon_map = obstacles.PolygonMap(boundary_file, obstacle_files)
+    if sim_plan:
+        def check_node_valid(node):
+            return is_node_valid(node, obstacles = sim_obstacles)
+    else:
+        folder = "milestone1"
+        boundary_file = os.path.join(folder, "milestone1_vertices.ply")
+        obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst_Vertices")]
+        polygon_map = obstacles.PolygonMap(boundary_file, obstacle_files)
 
-    def check_node_valid(node, robot_radius=robot_radius):
-        node = node[:2]
-        is_safe, message = polygon_map.is_valid_robot_pos(node, radius=robot_radius)
-        return is_safe
+        def check_node_valid(node, robot_radius=robot_radius):
+            node = node[:2]
+            is_safe, message = polygon_map.is_valid_robot_pos(node, radius=robot_radius)
+            return is_safe
 
     map_param = [start[0], start[1], goal[0], goal[1]]
 
@@ -472,5 +518,5 @@ def execute_planning(start, goal):
     return smoothed_path, tree, nodes, path
 
 # -------- SAMPLE USAGE --------------------
-# from local_planner_func import execute_planning
-# path, _, _, _ = execute_planning(start, goal) #obstacle is the function from Rajesh's code
+# from local_planner import execute_planning
+# path, _, _, _ = execute_planning(start, goal) 
