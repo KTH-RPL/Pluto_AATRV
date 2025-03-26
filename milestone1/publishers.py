@@ -23,7 +23,7 @@ class RobotPosePublisher:
         self.robot_y = y + self.offset[1]
     
     def orientation_callback(self, msg):
-        self.robot_yaw = msg.orientation.z
+        self.robot_yaw = msg.yaw
     
     def publish_robot_pose(self):
         pose = PoseStamped()
