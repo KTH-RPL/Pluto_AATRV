@@ -5,15 +5,16 @@ import py_trees as pt, py_trees_ros as ptr, rospy
 from btree.rsequence import RSequence
 from std_srvs.srv import Empty, SetBool, SetBoolRequest 
 from geometry_msgs.msg import Pose,PoseWithCovarianceStamped
+from nav_msgs.msg import Path
 
 class BehaviourTree(ptr.trees.BehaviourTree):
 
     def __init__(self):
 
         rospy.loginfo("Initialising behaviour tree")
-        p1 = pt.composites.Selector(name="Move to goal",children=[checkPath,generate_path()])
+        p1 = pt.composites.Selector(name="Move to goal",children=[path_already_exist,generate_path])
         s1 = pt.composites.Sequence(name = "path_planner",children = [getGoalPosition,p1])
-        s2 = controls()
+        s2 = controls
         s0 = pt.composites.Sequence(name="pluto_move",children=[s1,s2])
 
         b0 = pt.composites.Selector(
@@ -44,19 +45,66 @@ class goal_reached(pt.behaviour.Behaviour):
         rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
 
     def robotPose_callback(self, msg):
-        self.robot_pose = msg.pose
+        self.robot_pose = msg.position
 
     def goal_callback(self, msg):
-        self.goal_pose = msg.pose
+        self.goal_pose = msg.position
 
     def update(self):
-        
-        if self.robot_pose and self.goal_pose:
-            if (self.robot_pose.x == self.goal_pose.x) and (self.robot_pose.y == self.goal_pose.y):
-                rospy.loginfo("Goal Reached!")
+
+        if self.goal_pose and self.robot_pose:
+            distance = ((self.robot_pose.x - self.goal_pose.x) ** 2 +
+                    (self.robot_pose.y - self.goal_pose.y) ** 2) ** 0.5
+
+            if distance < 0.1:  # threshold
                 self.goal_reached = True
         
         if self.goal_reached:
             return pt.common.Status.SUCCESS
         else:
             return pt.common.Status.FAILURE
+        
+class getGoalPosition(pt.behaviour.Behaviour):
+    def __init__(self):
+        rospy.loginfo("Initialising getGoalPosition behaviour.")
+        super().__init__("getGoalPosition")
+
+        self.goal_pose = None
+
+        rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
+
+    def goal_callback(self, msg):
+        self.goal_pose = msg.position
+
+    def update(self):
+        if self.goal_pose:
+            return pt.common.Status.SUCCESS
+        else:
+            return pt.common.Status.FAILURE
+        
+class path_already_exist(pt.behaviour.Behaviour):
+    def __init__(self):
+        rospy.loginfo("Initialising path_already_exist behaviour.")
+        super().__init__("path_already_exist")
+
+        self.path = None
+
+        rospy.Subscriber("/placeholder3", Path, self.path_callback) 
+
+    def path_callback(self, msg):
+        self.path = msg.poses
+
+    def update(self):     
+        if self.path:
+            return pt.common.Status.SUCCESS
+        else:
+            return pt.common.Status.FAILURE
+        
+class generate_path(pt.behaviour.Behaviour):
+    def __init__(self):
+        rospy.loginfo("Initialising generate_path behaviour.")
+        super().__init__("generate_path")
+
+        self.path = None
+
+        rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
