@@ -7,6 +7,8 @@ from std_srvs.srv import Empty, SetBool, SetBoolRequest
 from geometry_msgs.msg import Pose,PoseWithCovarianceStamped
 from nav_msgs.msg import Path
 from local_planner import execute_planning
+from control import PathFollower
+from publishers import PathPublisher
 
 class BehaviourTree(ptr.trees.BehaviourTree):
 
@@ -15,8 +17,8 @@ class BehaviourTree(ptr.trees.BehaviourTree):
         rospy.loginfo("Initialising behaviour tree")
         p1 = pt.composites.Selector(name="Move to goal",children=[path_already_exist,generate_path])
         s1 = pt.composites.Sequence(name = "path_planner",children = [getGoalPosition,p1])
-        s2 = controls
-        s0 = pt.composites.Sequence(name="pluto_move",children=[s1,s2])
+    
+        s0 = pt.composites.Sequence(name="pluto_move",children=[s1,controls])
 
         b0 = pt.composites.Selector(
             name="Goal fallback", 
@@ -42,8 +44,8 @@ class goal_reached(pt.behaviour.Behaviour):
         self.robot_pose = None
         self.goal_pose = None
 
-        rospy.Subscriber("/placeholder1", Pose, self.robotPose_callback)
-        rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
+        rospy.Subscriber("/robot_pose", Pose, self.robotPose_callback)
+        rospy.Subscriber("/goal", Pose, self.goal_callback)
 
     def robotPose_callback(self, msg):
         self.robot_pose = msg.position
@@ -72,7 +74,7 @@ class getGoalPosition(pt.behaviour.Behaviour):
 
         self.goal_pose = None
 
-        rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
+        rospy.Subscriber("/goal", Pose, self.goal_callback)
 
     def goal_callback(self, msg):
         self.goal_pose = msg.position
@@ -90,7 +92,7 @@ class path_already_exist(pt.behaviour.Behaviour):
 
         self.path = None
 
-        rospy.Subscriber("/placeholder3", Path, self.path_callback) 
+        rospy.Subscriber("/path", Path, self.path_callback) 
 
     def path_callback(self, msg):
         self.path = msg.poses
@@ -108,8 +110,8 @@ class generate_path(pt.behaviour.Behaviour):
 
         self.path = None
 
-        rospy.Subscriber("/placeholder2", Pose, self.goal_callback)
-        rospy.Subscriber("/placeholder1", Pose, self.robotPose_callback)
+        rospy.Subscriber("/goal", Pose, self.goal_callback)
+        rospy.Subscriber("/robot_pose", Pose, self.robotPose_callback)
 
     def goal_callback(self, msg):    
         self.goal_pose = msg.position       
@@ -122,6 +124,8 @@ class generate_path(pt.behaviour.Behaviour):
             self.path, _, _, _ = execute_planning(self.goal_pose, self.robot_pose)
 
             ## publish path
+            pp = PathPublisher()
+            pp.publish_path(self.path)
 
             return pt.common.Status.SUCCESS
         else:
@@ -134,6 +138,9 @@ class controls(pt.behaviour.Behaviour):
 
     def update(self):
         ## publish control commands
-        
+        pf = PathFollower()
+        pf.run()
+        return pt.common.Status.RUNNING
+
 
         
