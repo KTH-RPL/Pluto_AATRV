@@ -1,10 +1,12 @@
+#!/usr/bin/env python
+
 import rospy
 import utm
 
 from sensor_msgs.msg import NavSatFix, Imu
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
-from vectornav_msgs.msg import Ins
+from vectornav.msg import Ins
 
 
 class RobotPosePublisher:
@@ -14,6 +16,13 @@ class RobotPosePublisher:
         self.gnss = rospy.Subscriber('/reach/fix', NavSatFix, self.gnss_callback)
         self.orientation = rospy.Subscriber('/vectornav/INS', Ins, self.orientation_callback)
         self.robot_pos = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
+        
+        self.offset_x = rospy.get_param('~offset_x', 0.0)
+        self.offset_y = rospy.get_param('~offset_y', 0.0)
+
+        self.robot_x = 0.0
+        self.robot_y = 0.0
+        self.robot_yaw = 0.0
 
     def gnss_callback(self, msg):
         lat = msg.latitude
@@ -24,6 +33,7 @@ class RobotPosePublisher:
     
     def orientation_callback(self, msg):
         self.robot_yaw = msg.yaw
+        rospy.loginfo(self.robot_yaw)
     
     def publish_robot_pose(self):
         pose = PoseStamped()
@@ -60,7 +70,8 @@ class PathPublisher:
 
 if __name__ == '__main__':
     rospy.init_node('robot_pose_publisher')
-    robot_pose_publisher = RobotPosePublisher()
+    offset = [-333520.64199354, -6582420.00142414, 0.0]
+    robot_pose_publisher = RobotPosePublisher(offset)
     path_publisher = PathPublisher()
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():

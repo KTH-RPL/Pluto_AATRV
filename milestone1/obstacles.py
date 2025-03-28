@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 from shapely.geometry import Polygon, Point
 
 # import os
@@ -47,7 +47,7 @@ class PolygonMap:
         for point in trajectory:
             valid, message = self.is_valid_robot_pos(point, radius)
             if not valid:
-                return False, f"Unsafe at {point}: {message}"
+                return False, "Unsafe at {}: {}".format(point, message)
         return True, "Trajectory is safe"
 
     def visualize(self, trajectory=None, radius=None):
@@ -72,7 +72,7 @@ class PolygonMap:
         # Plot robot at start and end
         if trajectory and radius:
             for center, color, label in zip([trajectory[0], trajectory[-1]], ['green', 'orange'], ["Start", "End"]):
-                circle = plt.Circle(center, radius, color=color, alpha=0.5, label=f"Robot - {label}")
+                circle = plt.Circle(center, radius, color=color, alpha=0.5, label="Robot - {}".format(label))
                 ax.add_patch(circle)
 
         ax.legend()

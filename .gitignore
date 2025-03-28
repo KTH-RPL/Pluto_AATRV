@@ -13,3 +13,5 @@
 # CMake temporary files
 /planner_ws/CMakeFiles/
 /planner_ws/CMakeCache.txt
+
+**/*.pyc

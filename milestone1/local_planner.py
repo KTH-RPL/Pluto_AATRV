@@ -89,7 +89,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
     iq = 0
 
     for i in range(max_iter):
-        verbose and print(f"Iteration {i}")
+        if verbose:
+            print("Iteration {}".format(i))
         # 1. Select node to explore
         ## Sample random point as direction to grow
         if random.random() < prob_goal_bias:
@@ -101,7 +102,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
                 random.uniform(-math.pi, math.pi)
             )
             
-        verbose and print("> Direction selected")
+        if verbose:
+            print("> Direction selected")
 
         ## Find nearest node in the tree
         attempts = 0
@@ -121,7 +123,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
             rospy.logwarn("Could not find a new node to explore after multiple attempts!")
             continue  # Skip this iteration
         
-        verbose and print(f"> Exploration node selected {x_nearest}")
+        if verbose:
+            print("> Exploration node selected {}".format(x_nearest))
 
         # print(x_nearest)
 
@@ -129,7 +132,8 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
         neighbors = generate_neighbors(x_nearest, step_size=step_size, num_samples=num_samples, check_node_valid=check_node_valid, verbose=verbose)
         # print(neighbors)
 
-        verbose and print(f"> Neighbors generated")
+        if verbose:
+            print("> Neighbors generated")
 
         for x_new in neighbors:
             # Add new node to the tree if valid
@@ -137,12 +141,14 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
             # if check_node_valid(x_new, map_param, obstacles=obstacles):
                 tree[x_new] = (x_nearest)
                 nodes.append(x_new)
-                verbose and print(f"Append node {x_new}")
+                if verbose:
+                    print("Append node {}".format(x_new))
 
                 # Step 5: Goal proximity check
                 if euclidean_dist(x_new[:2], goal[:2]) < goal_threshold:
                     #draw_map(car, nodes, start, goal, x_new)
-                    verbose and print(f"Goal reached on iteration {i}")
+                    if verbose:
+                        print("Goal reached on iteration {}".format(i))
                     return reconstruct_path(tree, x_new), tree, nodes
 
             iq+=1
@@ -490,23 +496,23 @@ def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid, ver
     """
     # Step 1: Simplify path by removing unnecessary nodes using line-of-sight
     simplified_path = simplify_path(path, map_param, check_node_valid=check_node_valid)
-    verbose and print("1. Simplify path done")
+    print("1. Simplify path done")
     
     # Step 2: Convert simplified path into equidistance points
     equidistant_path = equidistant_points_dynamic(simplified_path, max_dist_per_point)
-    verbose and print("2. Equidistant path done")
+    print("2. Equidistant path done")
     
     # Step 3: Change edges into smooth spline
     spline_path = apply_spline_at_sharp_turns(equidistant_path, check_node_valid=check_node_valid)
-    verbose and print("3. Spline path done")
+    print("3. Spline path done")
     
     # Step 4: Ensure that there is no backtracking (i.e., points should be in a consistent direction)
     smoothed_path = ensure_no_backtracking(spline_path)
-    verbose and print("4. Backtrack check done")
+    print("4. Backtrack check done")
 
     # Step 5: Generate heading of the trajectory points
     finalized_path = generate_trajectory_heading(smoothed_path)
-    verbose and print("5. Final path done")
+    print("5. Final path done")
 
     return finalized_path
 
@@ -531,14 +537,14 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
     map_param = [start[0], start[1], goal[0], goal[1]]
 
     # Run the RRT planner
-    verbose and print("Running RRT Planner")
+    print("Running RRT Planner")
     path, tree, nodes = rrt_planner(start, goal, map_param, check_node_valid=check_node_valid, verbose=verbose)  # Pass obstacles to the planner
-    verbose and print("0. RRT path done")
+    print("0. RRT path done")
 
     # Smooth the path using the smoothing function from local_planner
     smoothed_path = smooth_path_with_spline(path, map_param, check_node_valid=check_node_valid, verbose=verbose)  # Pass obstacles to smooth_path
     
-    verbose and print(f"Generated path: {smoothed_path}")
+    print("Generated path: {}".format(smoothed_path))
     return smoothed_path, tree, nodes, path
 
 # -------- SAMPLE USAGE --------------------

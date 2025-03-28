@@ -1,8 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env /usr/bin/python
 
+import sys
 import time
-import py_trees as pt, py_trees_ros as ptr, rospy
-from btree.rsequence import RSequence
+import py_trees as pt
+import py_trees_ros as ptr
+import rospy
+from rsequence import RSequence
 from std_srvs.srv import Empty, SetBool, SetBoolRequest 
 from geometry_msgs.msg import Pose,PoseWithCovarianceStamped
 from nav_msgs.msg import Path
@@ -10,24 +13,24 @@ from local_planner import execute_planning
 from control import PathFollower
 from publishers import PathPublisher
 
-class BehaviourTree(ptr.trees.BehaviourTree):
+class M1BehaviourTree(ptr.trees.BehaviourTree):
 
     def __init__(self):
 
         rospy.loginfo("Initialising behaviour tree")
-        p1 = pt.composites.Selector(name="Move to goal",children=[path_already_exist,generate_path])
-        s1 = pt.composites.Sequence(name = "path_planner",children = [getGoalPosition,p1])
+        p1 = pt.composites.Selector(name="Move to goal",children=[path_already_exist(),generate_path()])
+        s1 = pt.composites.Sequence(name = "path_planner",children = [getGoalPosition(),p1])
     
-        s0 = pt.composites.Sequence(name="pluto_move",children=[s1,controls])
+        s0 = pt.composites.Sequence(name="pluto_move",children=[s1,controls()])
 
         b0 = pt.composites.Selector(
             name="Goal fallback", 
-            children=[goal_reached,s0 ]
+            children=[goal_reached(),s0]
         )  
 
 
         tree = RSequence(name="Main sequence", children=[b0]) 
-        super(BehaviourTree, self).__init__(tree)
+        super(M1BehaviourTree, self).__init__(tree)
 
         # execute the behaviour tree
         rospy.sleep(5)
@@ -38,7 +41,7 @@ class BehaviourTree(ptr.trees.BehaviourTree):
 class goal_reached(pt.behaviour.Behaviour):
     def __init__(self):
         rospy.loginfo("Initialising goal_reached behaviour.")
-        super().__init__("Goal_reached")
+        super(goal_reached, self).__init__("Goal_reached")
 
         self.goal_reached = False
         self.robot_pose = None
@@ -70,7 +73,7 @@ class goal_reached(pt.behaviour.Behaviour):
 class getGoalPosition(pt.behaviour.Behaviour):
     def __init__(self):
         rospy.loginfo("Initialising getGoalPosition behaviour.")
-        super().__init__("getGoalPosition")
+        super(getGoalPosition, self).__init__("getGoalPosition")
 
         self.goal_pose = None
 
@@ -88,7 +91,7 @@ class getGoalPosition(pt.behaviour.Behaviour):
 class path_already_exist(pt.behaviour.Behaviour):
     def __init__(self):
         rospy.loginfo("Initialising path_already_exist behaviour.")
-        super().__init__("path_already_exist")
+        super(path_already_exist, self).__init__("path_already_exist")
 
         self.path = None
 
@@ -106,7 +109,7 @@ class path_already_exist(pt.behaviour.Behaviour):
 class generate_path(pt.behaviour.Behaviour):
     def __init__(self):
         rospy.loginfo("Initialising generate_path behaviour.")
-        super().__init__("generate_path")
+        super(generate_path, self).__init__("generate_path")
 
         self.path = None
 
@@ -134,13 +137,18 @@ class generate_path(pt.behaviour.Behaviour):
 class controls(pt.behaviour.Behaviour):
     def __init__(self):
         rospy.loginfo("Initialising controls behaviour.")
-        super().__init__("controls")
+        super(controls, self).__init__("controls")
 
     def update(self):
         ## publish control commands
         pf = PathFollower()
-        pf.run()
-        return pt.common.Status.RUNNING
+        try:
+            pf.run()
+            return pt.common.Status.RUNNING
+        except Exception as e:
+            rospy.logerr("Error in control branch {}".format(e))
+            return pt.common.Status.FAILURE
 
-
-        
+if __name__ == "__main__":
+    print(sys.executable)
+    tree = M1BehaviourTree()
