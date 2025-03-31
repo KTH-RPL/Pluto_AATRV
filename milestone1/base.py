@@ -1,4 +1,4 @@
-#!/usr/bin/env /usr/bin/python
+#!/usr/bin/env miniconda3/envs/milestone1/bin/python
 
 import sys
 import time

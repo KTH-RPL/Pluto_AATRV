@@ -5,7 +5,7 @@ import numpy as np
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Path
 from tf.transformations import euler_from_quaternion
-
+import numpy as np
 class PathFollower:
     def __init__(self):
         rospy.init_node('path_follower', anonymous=True)
@@ -66,8 +66,8 @@ class PathFollower:
 
                 x_robot = self.current_pose.pose.position.x
                 y_robot = self.current_pose.pose.position.y
-                orientation = self.current_pose.pose.orientation
-                (_, _, theta_robot) = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
+                theta_robot = self.current_pose.pose.orientation
+                theta_robot = theta_robot* np.pi / 180
 
                 x_goal = x_points[-1]
                 y_goal = y_points[-1]

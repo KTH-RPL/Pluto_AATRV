@@ -10,6 +10,8 @@ import numpy as np
 import open3d as o3d
 from shapely.geometry import Polygon, Point
 
+import time
+
 class PolygonMap:
     def __init__(self, boundary_ply, obstacle_ply_list):
         self.boundary = self.load_polygon(boundary_ply)
@@ -98,10 +100,17 @@ polygon_map = PolygonMap(boundary_file, obstacle_files)
 from local_planner import execute_planning, robot_radius
 
 
-start = (120,97)
-goal = (140,65)
+start = (143,87)
+goal = (130,75)
 
+
+start_time = time.time()
 path, _, _, _ = execute_planning(start, goal) 
+end_time = time.time()
+
+exec_time = end_time - start_time
+print(f"Execution Time: {exec_time:.6f} Sec")
+
 path_clean = [(p[0],p[1]) for p in path]
 
 # Visualize the map with trajectory

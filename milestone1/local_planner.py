@@ -79,7 +79,7 @@ def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_n
 
     return neighbors
 
-def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=3.5, goal_threshold=0.5, num_samples=5, max_iter=1000000, prob_goal_bias=0.05, verbose=False):
+def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=2, goal_threshold=1, num_samples=5, max_iter=1000000, prob_goal_bias=0.2, verbose=False):
     tree = {start: None}
     nodes = [start]
     explored = []
@@ -525,6 +525,7 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
             return is_node_valid(node, obstacles = sim_obstacles)
     else:
         folder = "boundaries"
+        folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), folder)
         boundary_file = os.path.join(folder, "milestone1_vertices.ply")
         obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst_Vertices")]
         polygon_map = obstacles.PolygonMap(boundary_file, obstacle_files)
@@ -535,6 +536,10 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
             return is_safe
 
     map_param = [start[0], start[1], goal[0], goal[1]]
+
+    if not check_node_valid(goal):
+        print("Goal position is invalid (Out of bound / Inside obstacle)")
+        return None
 
     # Run the RRT planner
     print("Running RRT Planner")

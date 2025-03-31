@@ -1,6 +1,0 @@
-# Define the request
-nav_msgs/Path path
----
-# Define the response
-geometry_msgs/PointStamped setpoint
-nav_msgs/Path new_path
