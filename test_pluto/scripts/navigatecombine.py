@@ -1,5 +1,4 @@
-#!/usr/bin/env /home/nuc/miniconda3/envs/milestone1/bin/python
-
+#!/usr/bin/env python3
 import rospy
 import numpy as np
 from geometry_msgs.msg import PoseStamped, Twist, Point
@@ -18,7 +17,6 @@ class NavigationSystem:
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel_pub = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
-        # Control parameters
         self.k_theta = 0.2
         self.k_y = 0.7
         self.k_dey = 0.2
@@ -30,11 +28,10 @@ class NavigationSystem:
         self.prev_omega = 0
         self.goal_distance_threshold = 0.5
         
-        # Navigation state
         self.current_goal = None
         self.current_pose = None
         self.current_path = None
-        self.control_rate = rospy.Rate(50)  # 10Hz
+        self.control_rate = rospy.Rate(50)  
         
         rospy.loginfo("Pluto Navigation System initialized")
 
@@ -57,7 +54,6 @@ class NavigationSystem:
         rospy.loginfo("Planning new path...")
         path_points, _, _, _ = execute_planning(current_position, self.current_goal)
         
-        # Convert to Path message
         path_msg = Path()
         path_msg.header.stamp = rospy.Time.now()
         path_msg.header.frame_id = "map"

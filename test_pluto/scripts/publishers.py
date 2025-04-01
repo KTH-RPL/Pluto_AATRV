@@ -43,7 +43,7 @@ class RobotPosePublisher:
             self.robot_yaw = - (2*np.pi - self.robot_yaw)
         pose.pose.orientation.z = self.robot_yaw
         self.robot_pos.publish(pose)
-        rospy.loginfo(pose)
+        # rospy.loginfo(pose)
 
 def convert_gnss_to_utm(lat, lon):
     utm_coords = utm.from_latlon(lat, lon)

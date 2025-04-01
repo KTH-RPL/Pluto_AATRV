@@ -16,13 +16,12 @@ find_package(catkin REQUIRED COMPONENTS
   vectornav
 )
 
-catkin_install_python(PROGRAMS
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-  scripts/navigatecombine.py
-  scripts/send_goal.py
-  scripts/publishers.py
-  
-  )
+# catkin_install_python(PROGRAMS
+#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+#   scripts/send_goal.py
+#   scripts/publishers.py
+#   scripts/navigatecombine1.py
+#   )
 
 
 ## System dependencies are found with CMake's conventions
