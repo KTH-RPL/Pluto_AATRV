@@ -11,14 +11,14 @@ class RobotPosePublisher:
         self.odom_sub = rospy.Subscriber('/atrv/odom', Odometry, self.odom_callback)
         self.orientation_sub = rospy.Subscriber('/vectornav/INS', Ins, self.orientation_callback)
         self.robot_pos_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
-        self.firstyaw = rospy.Subscriber('/firstins',PoseStamped, self.firstyaw)
+        self.firstyaw_sub = rospy.Subscriber('/firstins',PoseStamped, self.firstyaw_cb)
         self.robot_x = 0.0
         self.robot_y = 0.0
         self.robot_yaw = 0.0
         self.first_yaw = 0.0
         self.offset = 0.0
 
-    def firstyaw(self,msg):
+    def firstyaw_cb(self,msg):
         self.first_yaw = msg.pose.orientation.z
 
 

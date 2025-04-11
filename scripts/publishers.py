@@ -20,7 +20,7 @@ class RobotPosePublisher:
         self.robot_y = 0.0
         self.robot_yaw = 0.0
         self.first_yaw = 0.0
-        self.offsetang = 53
+        self.offsetang = 0 #53
 
     def gnss_callback(self, msg):
         lat = msg.latitude

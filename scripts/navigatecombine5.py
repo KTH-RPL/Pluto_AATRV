@@ -13,9 +13,11 @@ class NavigationSystem:
         rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
         self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
-        
+        self.pose_offset_sub = rospy.Subscriber('/pose_offset', PoseStamped, self.pose_offset_callback)
+
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel_pub = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
+
         
         # Initialize data recording
         self.recording_file = None
@@ -43,7 +45,14 @@ class NavigationSystem:
         self.gen = False
         self.finished = False
         self.reached = False
+
+        self.start_x = None
+        self.start_y = None
+        self.yaw_offset = None
+
         rospy.loginfo("Pluto Navigation System initialized")
+
+
 
     def setup_data_recording(self):
         # Create a directory for logs if it doesn't exist
@@ -110,6 +119,14 @@ class NavigationSystem:
     def robot_pose_callback(self, msg):
         self.current_pose = msg
         self.poserec = True
+
+    def pose_offset_callback(self, msg):
+        if msg.pose.position.x is None or msg.pose.position.y is None or msg.pose.orientation.z is None:
+            rospy.logwarn("Received invalid pose_offset message with None values!")
+            
+        self.start_x = msg.pose.position.x
+        self.start_y = msg.pose.position.y
+        self.yaw_offset = msg.pose.orientation.z
         
 
     def plan_path(self):
@@ -121,8 +138,10 @@ class NavigationSystem:
                           self.current_pose.pose.position.y)
         
         rospy.loginfo("Planning new path...")
-        path_points, _, _, _ = execute_planning(current_position, self.current_goal)
-        
+        initial_path, _, _, _ = execute_planning(current_position, self.current_goal)
+
+        path_points, headings = self.rotate_path_to_local_frame(initial_path)
+
         path_msg = Path()
         path_msg.header.stamp = rospy.Time.now()
         path_msg.header.frame_id = "map"
@@ -135,8 +154,33 @@ class NavigationSystem:
         
         self.path_pub.publish(path_msg)
         self.current_path = path_points
+        self.current_headings = headings
+
+    
         rospy.loginfo("Path published with {} waypoints".format(len(path_msg.poses)))
   
+
+    def rotate_path_to_local_frame(self, path):
+        path_points = [(x,y) for x,y,_ in path]
+        headings = [h for _,_,h in path]
+        rotated_points = []
+        rotated_headings = []
+        
+        for (x, y), heading in zip(path_points, headings):
+            # Translate so the origin is at the robot's starting point
+            dx = x - self.start_x
+            dy = y - self.start_y
+
+            # Rotate coordinates by -yaw_offset
+            x_rot = dx * np.cos(-self.yaw_offset) - dy * np.sin(-self.yaw_offset)
+            y_rot = dx * np.sin(-self.yaw_offset) + dy * np.cos(-self.yaw_offset)
+            rotated_points.append([x_rot, y_rot])
+
+            # Also rotate heading
+            heading_rot = heading - self.yaw_offset
+            rotated_headings.append(heading_rot)
+        
+        return rotated_points, rotated_headings
 
     def generate_offset_path(self):
         if self.current_pose is None:
@@ -273,7 +317,7 @@ class NavigationSystem:
                         cmd_vel = Twist()  
                         cmd_vel.linear.x = 0
                         cmd_vel.angular.z = 0
-                        self.cmd_vel.publish(cmd_vel)
+                        self.cmd_vel_pub.publish(cmd_vel)
 
                 self.control_rate.sleep()
                 
