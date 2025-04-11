@@ -167,13 +167,9 @@ class NavigationSystem:
         rotated_headings = []
         
         for (x, y), heading in zip(path_points, headings):
-            # Translate so the origin is at the robot's starting point
-            dx = x - self.start_x
-            dy = y - self.start_y
-
             # Rotate coordinates by -yaw_offset
-            x_rot = dx * np.cos(-self.yaw_offset) - dy * np.sin(-self.yaw_offset)
-            y_rot = dx * np.sin(-self.yaw_offset) + dy * np.cos(-self.yaw_offset)
+            x_rot = x * np.cos(-self.yaw_offset) - y * np.sin(-self.yaw_offset)
+            y_rot = x * np.sin(-self.yaw_offset) + y * np.cos(-self.yaw_offset)
             rotated_points.append([x_rot, y_rot])
 
             # Also rotate heading
