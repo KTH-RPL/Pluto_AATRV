@@ -16,7 +16,7 @@ def publish_goal():
         goal.pose.position.y = rospy.get_param('~y', 75.0)
         goal.pose.orientation.w = 1.0
         pub.publish(goal)
-        rospy.loginfo("Published goal: (%.2f, %.2f)", goal.pose.position.x, goal.pose.position.y)
+        rospy.loginfo_throttle(5, "Published goal: (%.2f, %.2f)", goal.pose.position.x, goal.pose.position.y)
         rate.sleep()
 
 if __name__ == '__main__':

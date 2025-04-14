@@ -16,7 +16,7 @@
     </node>
 
     <node pkg="test_pluto" name="pluto_navigation_system" type="navigatecombine5.py" output="screen">
-        <env name="PYTHONPATH" value="$(env PYTHONPATH):/usr/lib/python3/dist-packages"/>
+        <env name="PYTHONPATH" value="$(env PYTHONPATH):/usr/lib/python3.6/dist-packages"/>
         <env name="ROS_PYTHON_VERSION" value="3"/>
     </node>
 

@@ -75,11 +75,22 @@ class NavigationSystem:
             'closest_path_y',
             'closest_path_heading',
             'closest_idx',
-            'goal_distance'
+            'goal_distance',
+            'heading_ref',
+            'heading_err',
+            'v',
+            'omega'
         ])
         rospy.loginfo(f"Data recording started at {filename}")
 
-    def record_data(self, robot_pose, closest_point, closest_idx, goal_distance):
+    def record_data(self, robot_pose, closest_point, closest_idx, goal_distance, heading_ref, heading_error, v, omega):
+        # Data to Record:
+        # 1/ Current pose (x, y, theta)
+        # 2/ Closest point (idx, x, y, theta)
+        # 3/ Goal distance
+        # 4/ Heading Ref & Heading Error
+        # 5/ Commands (v, omega)
+        
         if self.csv_writer is None:
             return
             
@@ -94,7 +105,9 @@ class NavigationSystem:
         else:
             closest_x, closest_y, closest_heading = None, None, None
         
-        rospy.loginfo(f"t: {timestamp} | x: {robot_x:.2f} | y: {robot_y:.2f} | θ: {robot_heading:.2f} | goal: id{closest_idx} [{closest_x:.2f}, {closest_y:.2f}, {closest_heading:.2f}] - dist: {goal_distance:.2f}")
+        rospy.loginfo(f"t: {timestamp} | x: {robot_x:.2f} | y: {robot_y:.2f} | θ: {robot_heading:.2f} | \
+                        goal: id{closest_idx} [{closest_x:.2f}, {closest_y:.2f}, {closest_heading:.2f}] - dist: {goal_distance:.2f} | \
+                        θ_ref: {heading_ref:.2f} | θ_err: {heading_error:.2f} | v: {v:.2f} | ω: {omega:.2f}")
         self.csv_writer.writerow([
             timestamp,
             robot_x,
@@ -104,7 +117,11 @@ class NavigationSystem:
             closest_y,
             closest_heading,
             closest_idx,
-            goal_distance
+            goal_distance,
+            heading_ref,
+            heading_error,
+            v,
+            omega
         ])
         self.recording_file.flush()  # Ensure data is written to disk
 
@@ -128,6 +145,7 @@ class NavigationSystem:
         self.start_x = msg.pose.position.x
         self.start_y = msg.pose.position.y
         self.yaw_offset = msg.pose.orientation.z
+        # rospy.loginfo(f"Received message for pose offset {self.start_x}")
         
 
     def plan_path(self):
@@ -258,7 +276,14 @@ class NavigationSystem:
     def run_control(self):
         try:
             while not rospy.is_shutdown():
+                if self.start_x == -999 or self.start_x == None:
+                    rospy.loginfo_throttle(5, f"[CONTROLLER] WAITING FOR POSE OFFSET")
+                    continue
+                else:
+                    rospy.loginfo_once(f"[CONTROLLER] POSE OFFSET RETRIEVED")
+
                 if self.poserec and self.goalrec and not self.reached:
+                    rospy.loginfo_throttle(5, f"[CONTROLLER] CONTROLLER PROCESSING")
                     if self.gen is True and self.current_path is not None and self.current_pose is not None:
                         x_robot = self.current_pose.pose.position.x
                         y_robot = self.current_pose.pose.position.y
@@ -269,15 +294,12 @@ class NavigationSystem:
                         self.closest_idx = self.find_closest_point(self.current_path, current_pos)
                         closest_point = self.current_path[self.closest_idx]
                         
-                        
                         remaining_path = self.prune_passed_points(self.current_path, self.closest_idx)
                         
                         
                         x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
                         goal_distance = np.sqrt((x_goal - x_robot)**2 + (y_goal - y_robot)**2)
-                        
-                        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
-                        
+                                                
                         if goal_distance < self.goal_distance_threshold:
                             cmd_vel = Twist()  
                             cmd_vel.linear.x = 0
@@ -309,6 +331,15 @@ class NavigationSystem:
                         cmd_vel.linear.x = v
                         cmd_vel.angular.z = omega
                         self.cmd_vel_pub.publish(cmd_vel)
+                        
+                        # Data to Record:
+                        # 1/ Current pose (x, y, theta)
+                        # 2/ Closest point (idx, x, y, theta)
+                        # 3/ Goal distance
+                        # 4/ Heading Ref & Heading Error
+                        # 5/ Commands (v, omega)
+                        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance, heading_ref, heading_error, v, omega)
+
                         
                     else:
                         cmd_vel = Twist()  
