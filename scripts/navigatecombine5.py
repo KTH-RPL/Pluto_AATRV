@@ -94,6 +94,7 @@ class NavigationSystem:
         else:
             closest_x, closest_y, closest_heading = None, None, None
         
+        rospy.loginfo(f"t: {timestamp} | x: {robot_x:.2f} | y: {robot_y:.2f} | θ: {robot_heading:.2f} | goal: id{closest_idx} [{closest_x:.2f}, {closest_y:.2f}, {closest_heading:.2f}] - dist: {goal_distance:.2f}")
         self.csv_writer.writerow([
             timestamp,
             robot_x,
