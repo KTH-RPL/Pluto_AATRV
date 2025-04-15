@@ -533,7 +533,7 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
         def check_node_valid(node, robot_radius=robot_radius):
             node = node[:2]
             is_safe, message = polygon_map.is_valid_robot_pos(node, radius=robot_radius)
-            return is_safe
+            return True #is_safe
 
     map_param = [start[0], start[1], goal[0], goal[1]]
 

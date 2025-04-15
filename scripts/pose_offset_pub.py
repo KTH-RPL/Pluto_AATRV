@@ -4,6 +4,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import NavSatFix
 from vectornav.msg import Ins
+import numpy as np
 import utm 
 
 firstins = -500.0
@@ -22,8 +23,7 @@ def insval(msg):
         firstins = 90 - firstins
         if firstins < -180:
             firstins = 360 + firstins
-
-       firstins = firstins * np.pi / 180
+        firstins = firstins * np.pi / 180
 
         if firstins > np.pi:
             firstins -= 2 * np.pi

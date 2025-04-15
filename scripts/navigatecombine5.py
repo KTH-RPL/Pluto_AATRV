@@ -11,11 +11,12 @@ from local_planner import execute_planning
 class NavigationSystem:
     def __init__(self):
         rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
-        self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
-        self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
+        self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback) #goal in map frame
+        self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback) #pose in map frame
         self.pose_offset_sub = rospy.Subscriber('/pose_offset', PoseStamped, self.pose_offset_callback)
 
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
+        self.global_path_pub = rospy.Publisher('/global_planned_path', Path, queue_size=10) #path in map frame
         self.cmd_vel_pub = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
 
         
@@ -36,6 +37,7 @@ class NavigationSystem:
         
         self.current_goal = None
         self.current_pose = None
+        self.unrotated_current_pose = None
         self.current_path = None
         self.current_headings = None
         self.closest_idx = 0           
@@ -82,17 +84,20 @@ class NavigationSystem:
             'omega',
             'start_x',
             'start_y',
-            'yaw_offset'
+            'yaw_offset',
+            'remaining_path'
         ])
         rospy.loginfo(f"Data recording started at {filename}")
 
-    def record_data(self, robot_pose, closest_point, closest_idx, goal_distance, heading_ref, heading_error, v, omega):
+    def record_data(self, robot_pose, closest_point, closest_idx, goal_distance, heading_ref, heading_error, v, omega, remaining_path):
         # Data to Record:
         # 1/ Current pose (x, y, theta)
         # 2/ Closest point (idx, x, y, theta)
         # 3/ Goal distance
         # 4/ Heading Ref & Heading Error
         # 5/ Commands (v, omega)
+        # 6/ Initial offsets
+        # 7/ Remaining Paths
         
         if self.csv_writer is None:
             return
@@ -127,7 +132,8 @@ class NavigationSystem:
             omega,
             self.start_x,
             self.start_y,
-            self.yaw_offset
+            self.yaw_offset,
+            remaining_path
         ])
         self.recording_file.flush()  # Ensure data is written to disk
 
@@ -151,16 +157,21 @@ class NavigationSystem:
         new_pose.header.stamp = rospy.Time.now()
         new_pose.header.frame_id = "robot"
         
+        self.unrotated_current_pose = msg
         self.current_pose = new_pose
         self.poserec = True
     
     def rotate_pose_to_local_frame(self, x, y, yaw):
         # Rotate coordinates by -yaw_offset
+        if self.yaw_offset == None:
+            rospy.loginfo("Yaw Offset is None")
+            return x, y, yaw
         x_rot = x * np.cos(-self.yaw_offset) - y * np.sin(-self.yaw_offset)
         y_rot = x * np.sin(-self.yaw_offset) + y * np.cos(-self.yaw_offset)
         
         # Adjust yaw (heading)
         yaw_rot = yaw - self.yaw_offset
+        
         return x_rot, y_rot, yaw_rot
 
     def pose_offset_callback(self, msg):
@@ -178,8 +189,11 @@ class NavigationSystem:
             rospy.logwarn("Cannot plan path - missing pose or goal")
             return
             
-        current_position = (self.current_pose.pose.position.x, 
-                          self.current_pose.pose.position.y)
+        # current_position = (self.current_pose.pose.position.x, 
+        #                   self.current_pose.pose.position.y)
+
+        current_position = (self.unrotated_current_pose.pose.position.x, 
+                          self.unrotated_current_pose.pose.position.y)
         
         rospy.loginfo("Planning new path...")
         initial_path, _, _, _ = execute_planning(current_position, self.current_goal)
@@ -197,6 +211,19 @@ class NavigationSystem:
             path_msg.poses.append(pose)
         
         self.path_pub.publish(path_msg)
+
+
+        gl_path_msg = Path()
+        gl_path_msg.header.stamp = rospy.Time.now()
+        gl_path_msg.header.frame_id = "map"
+        
+        for point in initial_path:
+            pose = PoseStamped()
+            pose.pose.position.x = point[0]
+            pose.pose.position.y = point[1]
+            gl_path_msg.poses.append(pose)
+        self.global_path_pub.publish(gl_path_msg)
+        
         self.current_path = path_points
         self.current_headings = headings
 
@@ -363,7 +390,7 @@ class NavigationSystem:
                         # 3/ Goal distance
                         # 4/ Heading Ref & Heading Error
                         # 5/ Commands (v, omega)
-                        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance, heading_ref, heading_error, v, omega)
+                        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance, heading_ref, heading_error, v, omega, remaining_path)
 
                         
                     else:
