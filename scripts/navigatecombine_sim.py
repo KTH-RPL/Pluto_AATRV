@@ -16,6 +16,9 @@ class NavigationSystem:
         self.pose_offset_sub = rospy.Subscriber('/pose_offset', PoseStamped, self.pose_offset_callback)
 
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
+        self.global_path_pub = rospy.Publisher('/global_planned_path', Path, queue_size=10) #path in map frame
+        self.local_robot_pose_pub = rospy.Publisher('/local_robot_pose', Path, queue_size=10) #path in map frame
+        self.local_goal_pose_pub = rospy.Publisher('/local_goal_pose', Path, queue_size=10) #path in map frame
         self.cmd_vel_pub = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
 
         
@@ -141,6 +144,18 @@ class NavigationSystem:
         rospy.loginfo(f"New goal received: {self.current_goal}")
         self.goalrec = True
         self.closest_idx = 0   
+
+        x_rot, y_rot, yaw_rot = self.rotate_pose_to_local_frame(msg.pose.position.x, msg.pose.position.y, msg.pose.orientation.z)
+
+        new_pose = PoseStamped()
+        new_pose.pose.position.x = x_rot
+        new_pose.pose.position.y = y_rot
+        new_pose.pose.orientation.z = yaw_rot
+        new_pose.header.stamp = rospy.Time.now()
+        new_pose.header.frame_id = "robot"
+
+        self.local_goal_pose_pub.publish(new_pose)
+
         if self.current_path is None and not self.gen:
             self.plan_path()
             self.gen = True   
@@ -159,6 +174,8 @@ class NavigationSystem:
         self.unrotated_current_pose = msg
         self.current_pose = new_pose
         self.poserec = True
+
+        self.local_robot_pose_pub.publish(new_pose)
     
     def rotate_pose_to_local_frame(self, x, y, yaw):
         # Rotate coordinates by -yaw_offset
@@ -210,6 +227,18 @@ class NavigationSystem:
             path_msg.poses.append(pose)
         
         self.path_pub.publish(path_msg)
+
+
+        gl_path_msg = Path()
+        gl_path_msg.header.stamp = rospy.Time.now()
+        gl_path_msg.header.frame_id = "map"
+        
+        for point in initial_path:
+            pose = PoseStamped()
+            pose.pose.position.x = point[0]
+            pose.pose.position.y = point[1]
+            gl_path_msg.poses.append(pose)
+        self.global_path_pub.publish(gl_path_msg)
         
         self.current_path = path_points
         self.current_headings = headings
