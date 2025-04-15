@@ -135,8 +135,27 @@ class NavigationSystem:
             self.gen = True   
 
     def robot_pose_callback(self, msg):
-        self.current_pose = msg
+        # Rotate to local frame
+        x_rot, y_rot, yaw_rot = self.rotate_pose_to_local_frame(msg.pose.position.x, msg.pose.position.y, msg.pose.orientation.z)
+
+        new_pose = PoseStamped()
+        new_pose.pose.position.x = x_rot
+        new_pose.pose.position.y = y_rot
+        new_pose.pose.orientation.z = yaw_rot
+        new_pose.header.stamp = rospy.Time.now()
+        new_pose.header.frame_id = "robot"
+        
+        self.current_pose = new_pose
         self.poserec = True
+    
+    def rotate_pose_to_local_frame(self, x, y, yaw):
+        # Rotate coordinates by -yaw_offset
+        x_rot = x * np.cos(-self.yaw_offset) - y * np.sin(-self.yaw_offset)
+        y_rot = x * np.sin(-self.yaw_offset) + y * np.cos(-self.yaw_offset)
+        
+        # Adjust yaw (heading)
+        yaw_rot = yaw - self.yaw_offset
+        return x_rot, y_rot, yaw_rot
 
     def pose_offset_callback(self, msg):
         if msg.pose.position.x is None or msg.pose.position.y is None or msg.pose.orientation.z is None:
