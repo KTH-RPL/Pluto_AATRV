@@ -79,7 +79,10 @@ class NavigationSystem:
             'heading_ref',
             'heading_err',
             'v',
-            'omega'
+            'omega',
+            'start_x',
+            'start_y',
+            'yaw_offset'
         ])
         rospy.loginfo(f"Data recording started at {filename}")
 
@@ -121,7 +124,10 @@ class NavigationSystem:
             heading_ref,
             heading_error,
             v,
-            omega
+            omega,
+            self.start_x,
+            self.start_y,
+            self.yaw_offset
         ])
         self.recording_file.flush()  # Ensure data is written to disk
 
