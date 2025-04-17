@@ -10,7 +10,6 @@ from local_planner import execute_planning
 
 class NavigationSystem:
     def __init__(self):
-        rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
         self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
         
@@ -180,7 +179,7 @@ class NavigationSystem:
         y0 = self.current_pose.pose.position.y
         theta0 = self.current_pose.pose.orientation.z
         
-        offset_angle = np.radians(30))
+        offset_angle = np.radians(30)
         
         path_points = []
         headings = []
@@ -343,7 +342,9 @@ class NavigationSystem:
 
 if __name__ == '__main__':
     try:
-        nav_system = NavigationSystem()      
+        rospy.init_node('navigatecombine')
+        rate = rospy.Rate(50)
+        nav_system = NavigationSystem()
         nav_system.run_control()
     except rospy.ROSInterruptException:
         pass

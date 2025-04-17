@@ -1,12 +1,14 @@
 <?xml version="1.0"?>
 
 <launch>
-    <include file="$(find emlid_reach_ros)/launch/reach_ros.launch" />
+    <include file="$(find emlid_reach_ros)/launch/reach_ros.launch">
+    	<arg name="port" default="/dev/ttyACM0"/>
+    </include>
     <include file="$(find vectornav)/launch/vectornav.launch" />
     <include file="$(find pluto)/launch/pluto.launch" />
 
     <node pkg="milestone1" type="publishers1.py" name="publishers"/>
     <node pkg="milestone1" type="send_goal.py" name="goal_publisher"/>
-    <node pkg="milestone1" type="base.py" name="behaviour_tree"/>
+    <node pkg="milestone1" type="navigatecombine1.py" name="navigatecombine1"/>
 
 </launch>
