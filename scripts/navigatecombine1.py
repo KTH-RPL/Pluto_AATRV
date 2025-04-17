@@ -180,7 +180,7 @@ class NavigationSystem:
         y0 = self.current_pose.pose.position.y
         theta0 = self.current_pose.pose.orientation.z
         
-        offset_angle = np.radians(30))
+        offset_angle = np.radians(30)
         
         path_points = []
         headings = []
