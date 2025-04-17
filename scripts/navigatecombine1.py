@@ -15,7 +15,7 @@ class NavigationSystem:
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
         
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
-        self.cmd_vel_pub = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
+        self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
         self.recording_file = None
@@ -23,14 +23,14 @@ class NavigationSystem:
         self.setup_data_recording()
         
         # Control parameters
-        self.lookahead_distance = 1.0
-        self.k_angular = 2.0           
+        self.lookahead_distance = 1.5
+        self.k_angular = 3.0           
         self.v_max = 0.4             
         self.v_min = 0.1            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
-        self.min_lookahead = 0.5       
-        self.max_lookahead = 1.0    
+        self.min_lookahead = 1.0       
+        self.max_lookahead = 1.5    
         
         self.current_goal = None
         self.current_pose = None
@@ -105,7 +105,7 @@ class NavigationSystem:
         self.goalrec = True
         self.closest_idx = 0   
         if self.current_path is None and not self.gen:
-            self.plan_path()
+            self.generate_offset_path()
             self.gen = True   
 
     def robot_pose_callback(self, msg):
@@ -138,6 +138,39 @@ class NavigationSystem:
         self.current_path = path_points
         rospy.loginfo("Path published with {} waypoints".format(len(path_msg.poses)))
   
+    def generate_circular_path(self):
+        if self.current_pose is None:
+            return
+            
+        x0 = self.current_pose.pose.position.x
+        y0 = self.current_pose.pose.position.y
+        theta0 = self.current_pose.pose.orientation.z
+        self.circle_radius
+        circumference = 2 * np.pi * self.circle_radius
+        num_points = int(circumference / self.point_spacing)
+        
+        path_points = []
+        headings = []
+        
+        for i in range(num_points + 1):
+            angle = (i / num_points) * self.circle_angle
+            
+            x = x0 + self.circle_radius * np.cos(theta0 + angle + np.pi/2)
+            y = y0 + self.circle_radius * np.sin(theta0 + angle + np.pi/2)
+            
+            heading = theta0 + angle + np.pi  
+            
+            heading = (heading + np.pi) % (2 * np.pi) - np.pi
+            
+            path_points.append([x, y])
+            headings.append(heading)
+        
+        self.current_path = np.array(path_points)
+        self.current_headings = np.array(headings)
+        self.closest_idx = 0
+        
+        self.publish_path(path_points,headings)
+        rospy.loginfo(f"Generated circular path with {len(path_points)} points and is {(path_points)}")
 
     def generate_offset_path(self):
         if self.current_pose is None:
@@ -147,18 +180,22 @@ class NavigationSystem:
         y0 = self.current_pose.pose.position.y
         theta0 = self.current_pose.pose.orientation.z
         
-        offset_angle = theta0 + np.radians(0)
+        offset_angle = np.radians(30))
         
         path_points = []
         headings = []
-        
-        for i in range(1, 5):
-            distance = 0.5 * i
-            x = x0 + distance * np.cos(offset_angle)
-            y = y0 + distance * np.sin(offset_angle)
+        heading = theta0 + offset_angle
+        for i in range(1, 6):
+            distance = 1.2 * i
+            x = x0 + distance * np.cos(heading)
+            y = y0 + distance * np.sin(heading)
+            
+            heading = heading + offset_angle  
+            
+            heading = (heading + np.pi) % (2 * np.pi) - np.pi
             
             path_points.append([x, y])
-            headings.append(offset_angle)
+            headings.append(heading)
         
         self.current_path = np.array(path_points)
         self.current_headings = np.array(headings)
@@ -240,8 +277,8 @@ class NavigationSystem:
                         
                         self.closest_idx = self.find_closest_point(self.current_path, current_pos)
                         closest_point = self.current_path[self.closest_idx]
-                        if closest_point + 1 < len(self.current_path):
-                            side = self.chkside(closest_point,current_pos)
+                        if self.closest_idx + 1 < len(self.current_path):
+                            side = self.chkside(self.closest_idx,current_pos)
                             remid = self.closest_idx + side
                         else:
                             remid = self.closest_idx
@@ -257,7 +294,7 @@ class NavigationSystem:
                             cmd_vel = Twist()  
                             cmd_vel.linear.x = 0
                             cmd_vel.angular.z = 0
-                            self.cmd_vel_pub.publish(cmd_vel)
+                            self.cmd_vel.publish(cmd_vel)
                             rospy.loginfo("Goal reached!")
                             self.reached = True
                             continue
@@ -271,10 +308,11 @@ class NavigationSystem:
                         heading_error = heading_ref - theta_robot
                         heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
                         
-
+                        print("Error",heading_error)                       
                         if self.fp == True:                            
-                            if np.abs(heading_error) < np.pi/15:
+                            if np.abs(heading_error) < np.pi/2:
                                 self.fp = False
+                                v = self.v_max
                             else:
                                 v = 0
                         elif goal_distance < self.slow_down_distance:
@@ -284,11 +322,11 @@ class NavigationSystem:
                         omega = self.k_angular * heading_error
                         max_omega = 1.2
                         omega = np.clip(omega, -max_omega, max_omega)
-                        
+                        print("omega",omega)
                         cmd_vel = Twist()
                         cmd_vel.linear.x = v
                         cmd_vel.angular.z = omega
-                        self.cmd_vel_pub.publish(cmd_vel)
+                        self.cmd_vel.publish(cmd_vel)
                         
                     else:
                         cmd_vel = Twist()  

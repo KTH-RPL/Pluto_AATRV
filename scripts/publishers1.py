@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import numpy as np
@@ -17,6 +17,7 @@ class RobotPosePublisher:
         self.robot_yaw = 0.0
         self.first_yaw = 0.0
         self.offset = 0.0
+        self.fp = True
 
     def firstyaw_cb(self,msg):
         self.first_yaw = msg.pose.orientation.z
@@ -28,18 +29,35 @@ class RobotPosePublisher:
     
     def orientation_callback(self, msg):
         yaw = msg.yaw
+
         if yaw < 0:
             yaw = 360 + yaw
-        self.robot_yaw = (self.first_yaw - yaw)  
-        print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
+        # self.robot_yaw = (self.first_yaw - yaw)  
+        self.robot_yaw = yaw 
         self.robot_yaw = self.robot_yaw * np.pi / 180
- 
+        
+        
         # self.robot_yaw = np.pi/2 - self.robot_yaw  
         if self.robot_yaw > np.pi:
             self.robot_yaw -= 2 * np.pi
         elif self.robot_yaw < -np.pi:
             self.robot_yaw += 2 * np.pi
-    
+
+        if self.fp == True:
+            self.first_yaw = self.robot_yaw
+            self.robot_yaw-=self.robot_yaw
+            self.fp =False
+        else:
+            self.robot_yaw -= self.first_yaw
+            self.robot_yaw = -self.robot_yaw
+        
+        if self.robot_yaw > np.pi:
+            self.robot_yaw -= 2 * np.pi
+        elif self.robot_yaw < -np.pi:
+            self.robot_yaw += 2 * np.pi
+        print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
+
+            
     def publish_robot_pose(self):
         pose = PoseStamped()
         pose.header.stamp = rospy.Time.now()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import utm
@@ -36,25 +36,45 @@ class RobotPosePublisher:
 
         rospy.loginfo("[GNSS] UTM coordinates after offset: x={:.2f}, y={:.2f}".format(self.robot_x, self.robot_y))
 
+    def firstyaw_cb(self,msg):
+        self.first_yaw = msg.pose.orientation.z
+
+
+    def odom_callback(self, msg):
+        self.robot_x = msg.pose.pose.position.x
+        self.robot_y = msg.pose.pose.position.y
+    
     def orientation_callback(self, msg):
         yaw = msg.yaw
+
         if yaw < 0:
             yaw = 360 + yaw
-        self.robot_yaw = (-self.offsetang + yaw)
-        self.robot_yaw = 90 - self.robot_yaw
-        if yaw < -180:
-            yaw = 360 + yaw
-
-        yaw_deg = self.robot_yaw
+        # self.robot_yaw = (self.first_yaw - yaw)  
+        self.robot_yaw = (-self.offsetang + yaw) 
         self.robot_yaw = self.robot_yaw * np.pi / 180
-
+        
+        
+        # self.robot_yaw = np.pi/2 - self.robot_yaw  
         if self.robot_yaw > np.pi:
             self.robot_yaw -= 2 * np.pi
         elif self.robot_yaw < -np.pi:
             self.robot_yaw += 2 * np.pi
 
-        rospy.loginfo("[INS] Yaw received: {:.2f} degrees, converted to {:.2f} radians".format(yaw_deg, self.robot_yaw))
+        if self.fp == True:
+            self.first_yaw = self.robot_yaw
+            self.robot_yaw-=self.robot_yaw
+            self.fp =False
+        else:
+            self.robot_yaw -= self.first_yaw
+            self.robot_yaw = -self.robot_yaw
+        
+        if self.robot_yaw > np.pi:
+            self.robot_yaw -= 2 * np.pi
+        elif self.robot_yaw < -np.pi:
+            self.robot_yaw += 2 * np.pi
+        print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
 
+            
     def publish_robot_pose(self):
         pose = PoseStamped()
         pose.header.stamp = rospy.Time.now()
@@ -63,42 +83,10 @@ class RobotPosePublisher:
         pose.pose.orientation.z = self.robot_yaw
         self.robot_pos_pub.publish(pose)
 
-        rospy.loginfo_throttle(5, "[PUBLISH] Publishing pose: x={:.2f}, y={:.2f}, yaw={:.2f}".format(
-            self.robot_x, self.robot_y, self.robot_yaw))
-
-
-def convert_gnss_to_utm(lat, lon):
-    utm_coords = utm.from_latlon(lat, lon)
-    x = utm_coords[0]
-    y = utm_coords[1]
-    return x, y
-
-
-class PathPublisher:
-
-    def __init__(self):
-        self.path = rospy.Publisher('/path', Path, queue_size=10)
-        rospy.loginfo("[INIT] PathPublisher initialized.")
-
-    def publish_path(self, path):
-        path_msg = Path()
-        path_msg.header.stamp = rospy.Time.now()
-        for point in path:
-            pose = PoseStamped()
-            pose.pose.position.x = point[0]
-            pose.pose.position.y = point[1]
-            pose.pose.orientation.z = point[2]
-            path_msg.poses.append(pose)
-        self.path.publish(path_msg)
-        rospy.loginfo("[PUBLISH] Path published with {} points.".format(len(path)))
-
-
 if __name__ == '__main__':
-    rospy.init_node('robot_pose_publisher')
-    rospy.loginfo("[START] robot_pose_publisher node started.")
-    offset = [-333520.64199354, -6582420.00142414, 0.0]
-    robot_pose_publisher = RobotPosePublisher(offset)
-    rate = rospy.Rate(10)
+    rospy.init_node('robot_pose_publisher1')
+    robot_pose_publisher = RobotPosePublisher()
+    rate = rospy.Rate(50)
     while not rospy.is_shutdown():
         robot_pose_publisher.publish_robot_pose()
         rate.sleep()
