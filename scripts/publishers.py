@@ -7,7 +7,7 @@ from sensor_msgs.msg import NavSatFix, Imu
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from vectornav.msg import Ins
-
+import utm
 
 class RobotPosePublisher:
 
@@ -27,7 +27,7 @@ class RobotPosePublisher:
     def gnss_callback(self, msg):
         lat = msg.latitude
         lon = msg.longitude
-        x, y = convert_gnss_to_utm(lat, lon)
+        x, y = self.convert_gnss_to_utm(lat, lon)
         rospy.loginfo("[GNSS] GNSS fix received: lat={}, lon={}".format(lat, lon))
         rospy.loginfo("[GNSS] UTM coordinates before offset: x={:.2f}, y={:.2f}".format(x, y))
 
@@ -36,6 +36,12 @@ class RobotPosePublisher:
 
         rospy.loginfo("[GNSS] UTM coordinates after offset: x={:.2f}, y={:.2f}".format(self.robot_x, self.robot_y))
 
+    def convert_gnss_to_utm(lat, lon):
+        utm_coords = utm.from_latlon(lat, lon)
+        x = utm_coords[0]
+        y = utm_coords[1]
+        return x, y
+    
     def firstyaw_cb(self,msg):
         self.first_yaw = msg.pose.orientation.z
 
