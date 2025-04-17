@@ -11,16 +11,11 @@ from local_planner import execute_planning
 class NavigationSystem:
     def __init__(self):
         rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
-        self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
-        self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
-        
-        self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
         self.recording_file = None
         self.csv_writer = None
-        self.setup_data_recording()
         
         # Control parameters
         self.lookahead_distance = 1.5
@@ -45,66 +40,6 @@ class NavigationSystem:
         self.reached = False
         self.fp = True
         rospy.loginfo("Pluto Navigation System initialized")
-        
-
-    def plan_path(self):
-        if self.current_pose is None or self.current_goal is None:
-            rospy.logwarn("Cannot plan path - missing pose or goal")
-            return
-            
-        current_position = (self.current_pose.pose.position.x, 
-                          self.current_pose.pose.position.y)
-        
-        rospy.loginfo("Planning new path...")
-        path_points, _, _, _ = execute_planning(current_position, self.current_goal)
-        
-        path_msg = Path()
-        path_msg.header.stamp = rospy.Time.now()
-        path_msg.header.frame_id = "map"
-        
-        for point in path_points:
-            pose = PoseStamped()
-            pose.pose.position.x = point[0]
-            pose.pose.position.y = point[1]
-            path_msg.poses.append(pose)
-        
-        self.path_pub.publish(path_msg)
-        self.current_path = path_points
-        rospy.loginfo("Path published with {} waypoints".format(len(path_msg.poses)))
-  
-    def generate_circular_path(self):
-        if self.current_pose is None:
-            return
-            
-        x0 = self.current_pose.pose.position.x
-        y0 = self.current_pose.pose.position.y
-        theta0 = self.current_pose.pose.orientation.z
-        self.circle_radius
-        circumference = 2 * np.pi * self.circle_radius
-        num_points = int(circumference / self.point_spacing)
-        
-        path_points = []
-        headings = []
-        
-        for i in range(num_points + 1):
-            angle = (i / num_points) * self.circle_angle
-            
-            x = x0 + self.circle_radius * np.cos(theta0 + angle + np.pi/2)
-            y = y0 + self.circle_radius * np.sin(theta0 + angle + np.pi/2)
-            
-            heading = theta0 + angle + np.pi  
-            
-            heading = (heading + np.pi) % (2 * np.pi) - np.pi
-            
-            path_points.append([x, y])
-            headings.append(heading)
-        
-        self.current_path = np.array(path_points)
-        self.current_headings = np.array(headings)
-        self.closest_idx = 0
-        
-        self.publish_path(path_points,headings)
-        rospy.loginfo(f"Generated circular path with {len(path_points)} points and is {(path_points)}")
 
     def generate_offset_path(self):
         if self.current_pose is None:
@@ -114,7 +49,7 @@ class NavigationSystem:
         y0 = self.current_pose.pose.position.y
         theta0 = self.current_pose.pose.orientation.z
         
-        offset_angle = np.radians(30)
+        offset_angle = np.radians(5)
         
         path_points = []
         headings = []
@@ -128,29 +63,14 @@ class NavigationSystem:
             
             heading = (heading + np.pi) % (2 * np.pi) - np.pi
             
-            path_points.append([x, y])
-            headings.append(heading)
+            path_points.append([x, y,heading])
         
         self.current_path = np.array(path_points)
-        self.current_headings = np.array(headings)
         self.closest_idx = 0
-        
-        self.publish_path(path_points, headings)
+    
         rospy.loginfo(f"Generated offset path with {len(path_points)} points and {path_points}")
+        return self.current_path
 
-    def publish_path(self, path_points, headings):
-        path_msg = Path()
-        path_msg.header.stamp = rospy.Time.now()
-        path_msg.header.frame_id = "map"
-        
-        for point, head in zip(path_points, headings):
-            pose = PoseStamped()
-            pose.pose.position.x = point[0]
-            pose.pose.position.y = point[1]
-            pose.pose.orientation.z = head
-            path_msg.poses.append(pose)
-        
-        self.path_pub.publish(path_msg)
 
     def find_closest_point(self, path, current_pos):
      
@@ -208,7 +128,7 @@ class NavigationSystem:
                 
                 
                 self.closest_idx = self.find_closest_point(self.current_path, current_pos)
-                closest_point = self.current_path[self.closest_idx]
+                closest_point = self.current_path[self.closest_idx][:2]
                 if self.closest_idx + 1 < len(self.current_path):
                     side = self.chkside(self.closest_idx,current_pos)
                     remid = self.closest_idx + side
@@ -235,7 +155,7 @@ class NavigationSystem:
                     remaining_path, current_pos, 0)
                 
                 actual_lookahead_idx = self.closest_idx + lookahead_idx
-                heading_ref = self.current_headings[actual_lookahead_idx]                    
+                heading_ref = self.current_path[actual_lookahead_idx][2]                    
 
                 heading_error = heading_ref - theta_robot
                 heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
