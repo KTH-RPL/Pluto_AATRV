@@ -29,7 +29,7 @@ class NavigationSystem:
         self.v_min = 0.1            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
-        self.min_lookahead = 1.0       
+        self.min_lookahead = 1.2      
         self.max_lookahead = 1.5    
         
         self.current_goal = None
