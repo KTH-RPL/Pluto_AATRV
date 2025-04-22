@@ -19,7 +19,7 @@ import argparse
 parser = argparse.ArgumentParser(description="Local Planner for Pluto")
 parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose mode")
 args = parser.parse_args()
-verbose_g = True
+verbose_g = False
 if args.verbose:
     verbose_g = True
 
