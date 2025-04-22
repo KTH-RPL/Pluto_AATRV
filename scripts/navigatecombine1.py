@@ -12,8 +12,8 @@ class NavigationSystem:
     def __init__(self):
         self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
-        
-        self.path_pub = rospy.Publisher('/planned_path', Path,latch = True, queue_size=10)
+        self.look_pub = rospy.Publisher('/lookahead_point', PoseStamped, queue_size=10)
+        self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
@@ -69,6 +69,13 @@ class NavigationSystem:
             'goal_distance'
         ])
         rospy.loginfo(f"Data recording started at {filename}")
+
+    def publish_look_pose(self,x,y):
+        pose = PoseStamped()
+        pose.header.stamp = rospy.Time.now()
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        self.look_pub.publish(pose)
 
     def record_data(self, robot_pose, closest_point, closest_idx, goal_distance):
         if self.csv_writer is None:
@@ -227,7 +234,12 @@ class NavigationSystem:
         for i, point in enumerate(path):
             dx = point[0] - robot_x
             dy = point[1] - robot_y            
-            ahead_points.append((i, point))        
+            
+            ahead_points.append((i, point))
+        
+        if not ahead_points:
+            return 0  
+        
         closest_idx, closest_point = min(ahead_points, 
                                       key=lambda x: np.sqrt((x[1][0]-robot_x)**2 + (x[1][1]-robot_y)**2))
         return closest_idx
@@ -251,8 +263,8 @@ class NavigationSystem:
         x1 = self.current_path[cp][0]
         y2 = self.current_path[cp+1][1]
         x2 = self.current_path[cp+1][0]
-        m = -(x2 - x1)/(y1 - y2)
-        ineq = pose[1] - y1 + (pose[0]/m) - (x1/m)
+        m = -(x2 - x1)/(y1 - y2) if (y1 - y2) != 0 else np.inf
+        ineq = pose[1] - y1 + (pose[0]/m) - (x1/m) if m != np.inf else pose[0] - x1
         if ineq > 0:
             return 1
         else:
@@ -281,9 +293,7 @@ class NavigationSystem:
                         
                         x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
                         goal_distance = np.sqrt((x_goal - x_robot)**2 + (y_goal - y_robot)**2)
-                        
-                        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
-                        
+                                                
                         if goal_distance < self.goal_distance_threshold:
                             cmd_vel = Twist()  
                             cmd_vel.linear.x = 0
@@ -295,7 +305,7 @@ class NavigationSystem:
                         
                         lookahead_point, lookahead_idx = self.find_lookahead_point(
                             remaining_path, current_pos, 0)
-                        
+                        self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
                         actual_lookahead_idx = self.closest_idx + lookahead_idx
                         # heading_ref = self.current_headings[actual_lookahead_idx]                    
                         heading_ref = self.current_path[actual_lookahead_idx][2]

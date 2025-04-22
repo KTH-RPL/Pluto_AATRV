@@ -15,6 +15,7 @@ class LivePlot:
 
         self.robot_pose = None
         self.goal_pose = None
+        self.lookahead_pose = None
         self.global_path = None
         self.vel_history = deque(maxlen=100)
         self.error_history = deque(maxlen=100)
@@ -23,9 +24,10 @@ class LivePlot:
         robot_pose_topic = '/local_robot_pose' if plot_local else '/robot_pose'
         goal_pose_topic = '/local_goal_pose' if plot_local else '/goal_pose'
         path_topic = '/planned_path' if plot_local else '/global_planned_path'
-
+        lookahead_point_topic = '/lookahead_point'
         rospy.Subscriber(robot_pose_topic, PoseStamped, self.robot_pose_cb)
         rospy.Subscriber(goal_pose_topic, PoseStamped, self.goal_pose_cb)
+        rospy.Subscriber(lookahead_point_topic, PoseStamped, self.lookahead_cb)
         rospy.Subscriber(path_topic, Path, self.global_path_cb)
         rospy.Subscriber('/atrv/cmd_vel', Twist, self.cmd_vel_cb)
 
@@ -37,7 +39,10 @@ class LivePlot:
 
     def goal_pose_cb(self, msg):
         self.goal_pose = msg
-
+    
+    def goal_pose_cb(self, msg):
+        self.lookahead_pose = msg
+    
     def global_path_cb(self, msg):
         if not self.global_path:
             self.global_path = [(pose.pose.position.x, pose.pose.position.y) for pose in msg.poses]
@@ -80,12 +85,18 @@ class LivePlot:
             self.ax_map.arrow(x, y, dx, dy, head_width=1, color='g', label='Robot')
             all_x.append(x)
             all_y.append(y)
+        
+        if self.lookahead_pose:
+            lx = self.lookahead_pose.pose.position.x
+            ly = self.lookahead_pose.pose.position.y
+            self.ax_map.plot(lx, ly, 'b*', label='lookahead')
 
         # Dynamically adjust axis limits with some margin
         if all_x and all_y:
             margin = 5
             self.ax_map.set_xlim(min(all_x) - margin, max(all_x) + margin)
             self.ax_map.set_ylim(min(all_y) - margin, max(all_y) + margin)
+            self.ax_map.plot(all_x, all_y, "m*")
 
         self.ax_map.legend()
 
