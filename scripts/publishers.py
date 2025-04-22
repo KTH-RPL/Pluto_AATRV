@@ -20,7 +20,7 @@ class RobotPosePublisher:
         self.robot_y = 0.0
         self.robot_yaw = 0.0
         self.first_yaw = 0.0
-        self.offsetang = 200 # 53
+        self.offsetang = 244 # 53
         self
         rospy.loginfo("[INIT] RobotPosePublisher initialized with offset: [{:.2f}, {:.2f}, {:.2f}]".format(
             self.offset[0], self.offset[1], self.offset[2]))
