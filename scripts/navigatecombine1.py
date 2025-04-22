@@ -13,7 +13,7 @@ class NavigationSystem:
         self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
         
-        self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
+        self.path_pub = rospy.Publisher('/planned_path', Path,latch = True, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
@@ -103,7 +103,7 @@ class NavigationSystem:
         rospy.loginfo(f"New goal received: {self.current_goal}")
           
         if self.current_path is None and not self.gen:
-            self.generate_offset_path()
+            self.plan_path()
             self.goalrec = True
             self.closest_idx = 0 
             self.gen = True   
@@ -227,11 +227,7 @@ class NavigationSystem:
         for i, point in enumerate(path):
             dx = point[0] - robot_x
             dy = point[1] - robot_y            
-            
-        
-        if not ahead_points:
-            return 0  
-        
+            ahead_points.append((i, point))        
         closest_idx, closest_point = min(ahead_points, 
                                       key=lambda x: np.sqrt((x[1][0]-robot_x)**2 + (x[1][1]-robot_y)**2))
         return closest_idx
@@ -301,8 +297,9 @@ class NavigationSystem:
                             remaining_path, current_pos, 0)
                         
                         actual_lookahead_idx = self.closest_idx + lookahead_idx
-                        heading_ref = self.current_headings[actual_lookahead_idx]                    
-                        # heading_ref = self.current_path[actual_lookahead_idx][2]
+                        # heading_ref = self.current_headings[actual_lookahead_idx]                    
+                        heading_ref = self.current_path[actual_lookahead_idx][2]
+                        
                         heading_error = heading_ref - theta_robot
                         if np.abs(heading_error) > np.pi:
                             heading_error = -(heading_error - 2*np.pi)
