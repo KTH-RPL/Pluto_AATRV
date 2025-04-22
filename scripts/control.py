@@ -31,7 +31,7 @@ class NavigationSystem:
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
         self.max_lookahead = 1.5    
-        
+        self.pathgen = False
         self.current_goal = None
         self.current_pose = None
         self.current_path = None
@@ -92,13 +92,16 @@ class NavigationSystem:
         else:
             return 0
 
-    
+
+    def stop_robot(self):
+        cmd_vel = Twist()
+        cmd_vel.linear.x = 0
+        cmd_vel.angular.z = 0
+        self.cmd_vel.publish(cmd_vel)
 
 
 
-    def run_control(self, is_last_goal=False):
-        if self.current_pose is None or self.current_path is None:
-            return False  
+    def run_control(self, is_last_goal=False): 
 
         x_robot = self.current_pose.pose.position.x
         y_robot = self.current_pose.pose.position.y
@@ -121,14 +124,14 @@ class NavigationSystem:
 
         self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
 
-        if goal_distance < self.goal_distance_threshold:
-            cmd_vel = Twist()
-            cmd_vel.linear.x = 0
-            cmd_vel.angular.z = 0
-            self.cmd_vel.publish(cmd_vel)
-            rospy.loginfo("Goal reached!")
-            self.reached = True
-            return True  
+        # if goal_distance < self.goal_distance_threshold:
+        #     cmd_vel = Twist()
+        #     cmd_vel.linear.x = 0
+        #     cmd_vel.angular.z = 0
+        #     self.cmd_vel.publish(cmd_vel)
+        #     rospy.loginfo("Goal reached!")
+        #     self.reached = True
+        #     return True  
 
         lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
         actual_lookahead_idx = self.closest_idx + lookahead_idx
@@ -157,9 +160,9 @@ class NavigationSystem:
         cmd_vel.angular.z = omega
         self.cmd_vel.publish(cmd_vel)
 
-        self.control_rate.sleep()
+        # self.control_rate.sleep()
 
-        return False  
+        # return False  
 
 
 if __name__ == '__main__':

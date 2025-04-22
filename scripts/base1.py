@@ -22,7 +22,7 @@ class M1BehaviourTree(ptr.trees.BehaviourTree):
         s0 = planning_control(self.nav_system, self.goal_manager)
         b0 = pt.composites.Selector(
             name="Goal fallback",
-            children=[goal_reached(self.goal_manager), s0]
+            children=[goal_reached(self.nav_system,self.goal_manager), s0]
         )
 
         tree = RSequence(name="Main sequence", children=[b0])
@@ -38,6 +38,7 @@ class GoalManager:
     def __init__(self):
         self.goals = []
         self.current_goal = None
+        self.nextgoal = True
         rospy.Subscriber("/goal_pose", PoseArray, self.goals_callback)
 
     def goals_callback(self, msg):
@@ -51,12 +52,15 @@ class GoalManager:
             self.current_goal = self.goals.pop(0)
         else:
             self.current_goal = None
+        
+        self.next_goal = True
 
 
 class goal_reached(pt.behaviour.Behaviour):
-    def __init__(self, goal_manager):
+    def __init__(self, navsystem, goal_manager):
         super(goal_reached, self).__init__("Goal_reached")
         self.goal_manager = goal_manager
+        self.navsystem = navsystem
         self.robot_pose = None
         self.goal_pose = None
 
@@ -76,11 +80,13 @@ class goal_reached(pt.behaviour.Behaviour):
                         (self.robot_pose.y - goal_pose.y) ** 2) ** 0.5
 
             if distance < 0.2:
-                rospy.loginfo("[goal_reached] Goal reached!")
-                self.goal_manager.next_goal()
-                return pt.common.Status.SUCCESS
-            else:
-                return pt.common.Status.FAILURE
+                if (len(self.goal_manager.goals) == 0):
+                    rospy.loginfo("[goal_reached] Final Goal reached!")                    
+                    return pt.common.Status.SUCCESS
+                else:
+                    rospy.loginfo("[goal_reached] Intermediate Goal reached!")
+                    self.goal_manager.next_goal()
+                    return pt.common.Status.FAILURE
         else:
             rospy.logwarn("[goal_reached] Waiting for robot pose.")
             return pt.common.Status.RUNNING
@@ -105,29 +111,21 @@ class planning_control(pt.behaviour.Behaviour):
           rospy.loginfo("[planning_control] No goal to plan for.")
           return pt.common.Status.FAILURE
 
-      if not self.path_generated and self.robot_pose:
+      if self.goal_manager.nextgoal == True:
           goal_pose = current_goal.position
           self.nav_system.current_goal = goal_pose
           self.nav_system.current_pose = self.robot_pose
           self.nav_system.current_path, _, _, _ = execute_planning(goal_pose, self.robot_pose)
           rospy.loginfo("[planning_control] Path generated.")
           self.path_generated = True
+          self.goal_manager.nextgoal = False
           rospy.sleep(1)
 
       elif self.path_generated:
           is_last_goal = (len(self.goal_manager.goals) == 0)
-          goal_reached = self.nav_system.run_control(is_last_goal=is_last_goal)
-
-          if goal_reached:
-              self.path_generated = False
-              rospy.loginfo("[planning_control] Goal reached and control stopped.")
-              return pt.common.Status.SUCCESS
-          else:
-              return pt.common.Status.RUNNING
-
-      else:
-          rospy.loginfo("[planning_control] Waiting for path generation.")
+          self.nav_system.run_control(is_last_goal=is_last_goal)
           return pt.common.Status.RUNNING
+          
 if __name__ == "__main__":
     print(sys.executable)
     rospy.init_node("behaviour_tree_controller")
