@@ -148,3 +148,5 @@ if __name__ == '__main__':
         plotter.run()
     except rospy.ROSInterruptException:
         pass
+    except KeyboardInterrupt:
+        exit()
