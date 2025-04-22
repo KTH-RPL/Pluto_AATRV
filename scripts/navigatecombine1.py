@@ -23,7 +23,7 @@ class NavigationSystem:
         
         # Control parameters
         self.lookahead_distance = 1.5
-        self.k_angular = 3.0           
+        self.k_angular = 1.5           
         self.v_max = 0.4             
         self.v_min = 0.1            
         self.goal_distance_threshold = 0.2
@@ -101,10 +101,11 @@ class NavigationSystem:
     def goal_callback(self, msg):
         self.current_goal = (msg.pose.position.x, msg.pose.position.y)
         rospy.loginfo(f"New goal received: {self.current_goal}")
-        self.goalrec = True
-        self.closest_idx = 0   
+          
         if self.current_path is None and not self.gen:
-            self.generate_offset_path()
+            self.plan_path()
+            self.goalrec = True
+            self.closest_idx = 0 
             self.gen = True   
 
     def robot_pose_callback(self, msg):
@@ -302,8 +303,8 @@ class NavigationSystem:
                             remaining_path, current_pos, 0)
                         
                         actual_lookahead_idx = self.closest_idx + lookahead_idx
-                        heading_ref = self.current_headings[actual_lookahead_idx]                    
-
+                        # heading_ref = self.current_headings[actual_lookahead_idx]                    
+                        heading_ref = self.current_path[actual_lookahead_idx][2]
                         heading_error = heading_ref - theta_robot
                         heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
                         

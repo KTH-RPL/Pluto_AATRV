@@ -10,7 +10,6 @@ from local_planner import execute_planning
 
 class NavigationSystem:
     def __init__(self):
-        rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
@@ -19,7 +18,7 @@ class NavigationSystem:
         
         # Control parameters
         self.lookahead_distance = 1.5
-        self.k_angular = 3.0           
+        self.k_angular = 1.5         
         self.v_max = 0.4             
         self.v_min = 0.1            
         self.goal_distance_threshold = 0.2
@@ -140,7 +139,7 @@ class NavigationSystem:
                 x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
                 goal_distance = np.sqrt((x_goal - x_robot)**2 + (y_goal - y_robot)**2)
                 
-                self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
+                # self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
                 
                 if goal_distance < self.goal_distance_threshold:
                     cmd_vel = Twist()  
@@ -160,7 +159,7 @@ class NavigationSystem:
                 heading_error = heading_ref - theta_robot
                 heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
                 
-                print("Error",heading_error)                       
+                print("Error",heading_error," theta ",theta_robot," head ef ",heading_ref)                       
                 if self.fp == True:                            
                     if np.abs(heading_error) < np.pi/2:
                         self.fp = False

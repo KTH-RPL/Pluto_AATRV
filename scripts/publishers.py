@@ -20,7 +20,8 @@ class RobotPosePublisher:
         self.robot_y = 0.0
         self.robot_yaw = 0.0
         self.first_yaw = 0.0
-        self.offsetang = 0 # 53
+        self.offsetang = 200 # 53
+        self
         rospy.loginfo("[INIT] RobotPosePublisher initialized with offset: [{:.2f}, {:.2f}, {:.2f}]".format(
             self.offset[0], self.offset[1], self.offset[2]))
 
@@ -36,7 +37,7 @@ class RobotPosePublisher:
 
         rospy.loginfo("[GNSS] UTM coordinates after offset: x={:.2f}, y={:.2f}".format(self.robot_x, self.robot_y))
 
-    def convert_gnss_to_utm(lat, lon):
+    def convert_gnss_to_utm(self,lat, lon):
         utm_coords = utm.from_latlon(lat, lon)
         x = utm_coords[0]
         y = utm_coords[1]
@@ -56,7 +57,7 @@ class RobotPosePublisher:
         if yaw < 0:
             yaw = 360 + yaw
         # self.robot_yaw = (self.first_yaw - yaw)  
-        self.robot_yaw = (-self.offsetang + yaw) 
+        self.robot_yaw = (self.offsetang + yaw) 
         self.robot_yaw = self.robot_yaw * np.pi / 180
         
         
@@ -65,19 +66,7 @@ class RobotPosePublisher:
             self.robot_yaw -= 2 * np.pi
         elif self.robot_yaw < -np.pi:
             self.robot_yaw += 2 * np.pi
-
-        if self.fp == True:
-            self.first_yaw = self.robot_yaw
-            self.robot_yaw-=self.robot_yaw
-            self.fp =False
-        else:
-            self.robot_yaw -= self.first_yaw
-            self.robot_yaw = -self.robot_yaw
-        
-        if self.robot_yaw > np.pi:
-            self.robot_yaw -= 2 * np.pi
-        elif self.robot_yaw < -np.pi:
-            self.robot_yaw += 2 * np.pi
+        self.robot_yaw =- self.robot_yaw
         print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
 
             
