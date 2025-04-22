@@ -89,7 +89,7 @@ class LivePlot:
         if self.lookahead_pose:
             lx = self.lookahead_pose.pose.position.x
             ly = self.lookahead_pose.pose.position.y
-            self.ax_map.plot(lx, ly, 'bo', label='lookahead')
+            self.ax_map.plot(lx, ly, 'b*', label='lookahead')
 
         # Dynamically adjust axis limits with some margin
         if all_x and all_y:
