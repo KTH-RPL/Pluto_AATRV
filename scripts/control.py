@@ -10,20 +10,16 @@ from local_planner import execute_planning
 
 class NavigationSystem:
     def __init__(self):
-        self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
-        self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
         
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
-        self.recording_file = None
-        self.csv_writer = None
-        self.setup_data_recording()
+        
         
         # Control parameters
         self.lookahead_distance = 1.5
-        self.k_angular = 1.5         
+        self.k_angular = 0.05        
         self.v_max = 0.4             
         self.v_min = 0.1            
         self.goal_distance_threshold = 0.2
@@ -121,7 +117,6 @@ class NavigationSystem:
         x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
         goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
 
-        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
 
         # if goal_distance < self.goal_distance_threshold:
         #     cmd_vel = Twist()
@@ -134,7 +129,7 @@ class NavigationSystem:
 
         lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
         actual_lookahead_idx = self.closest_idx + lookahead_idx
-        heading_ref = self.current_headings[actual_lookahead_idx]
+        heading_ref = self.current_path[actual_lookahead_idx][2]
 
         heading_error = heading_ref - theta_robot
 
@@ -164,9 +159,9 @@ class NavigationSystem:
         # return False  
 
 
-if __name__ == '__main__':
-    try:
-        nav_system = NavigationSystem()      
-        nav_system.run_control()
-    except rospy.ROSInterruptException:
-        pass
+# if __name__ == '__main__':
+#     try:
+#         nav_system = NavigationSystem()      
+#         nav_system.run_control()
+#     except rospy.ROSInterruptException:
+#         pass

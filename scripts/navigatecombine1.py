@@ -23,9 +23,9 @@ class NavigationSystem:
         
         # Control parameters
         self.lookahead_distance = 1.5
-        self.k_angular = 1.5           
-        self.v_max = 0.4             
-        self.v_min = 0.1            
+        self.k_angular = 3           
+        self.v_max = 0.5             
+        self.v_min = 0.2            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
@@ -301,7 +301,7 @@ class NavigationSystem:
                             self.cmd_vel.publish(cmd_vel)
                             rospy.loginfo("Goal reached!")
                             self.reached = True
-                            continue
+                            break
                         
                         lookahead_point, lookahead_idx = self.find_lookahead_point(
                             remaining_path, current_pos, 0)
@@ -309,8 +309,13 @@ class NavigationSystem:
                         actual_lookahead_idx = self.closest_idx + lookahead_idx
                         # heading_ref = self.current_headings[actual_lookahead_idx]                    
                         heading_ref = self.current_path[actual_lookahead_idx][2]
+                        
                         heading_error = heading_ref - theta_robot
-                        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
+                        if np.abs(heading_error) > np.pi:
+                            heading_error = -(heading_error - 2*np.pi)
+
+                        print("pose ",current_pos)
+                        print("point ",self.current_path[actual_lookahead_idx])
                         
                         print("Error",heading_error)                       
                         if self.fp == True:                            
@@ -323,8 +328,10 @@ class NavigationSystem:
                             v = self.v_min + (self.v_max - self.v_min) * (goal_distance / self.slow_down_distance)
                         else:
                             v = self.v_max
+                        
+                        
                         omega = self.k_angular * heading_error
-                        max_omega = 1.2
+                        max_omega = 0.8
                         omega = np.clip(omega, -max_omega, max_omega)
                         print("omega",omega)
                         cmd_vel = Twist()
