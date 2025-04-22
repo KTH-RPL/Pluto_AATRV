@@ -96,6 +96,7 @@ class LivePlot:
             margin = 5
             self.ax_map.set_xlim(min(all_x) - margin, max(all_x) + margin)
             self.ax_map.set_ylim(min(all_y) - margin, max(all_y) + margin)
+            self.ax_map.plot(all_x, all_y, "m*")
 
         self.ax_map.legend()
 
