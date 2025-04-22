@@ -11,11 +11,16 @@ from local_planner import execute_planning
 class NavigationSystem:
     def __init__(self):
         rospy.init_node('pluto_navigation_system', anonymous=False, disable_signals=True)        
+        self.goal_sub = rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
+        self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback)
+        
+        self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
         
         # Initialize data recording
         self.recording_file = None
         self.csv_writer = None
+        self.setup_data_recording()
         
         # Control parameters
         self.lookahead_distance = 1.5
@@ -40,37 +45,6 @@ class NavigationSystem:
         self.reached = False
         self.fp = True
         rospy.loginfo("Pluto Navigation System initialized")
-
-    def generate_offset_path(self):
-        if self.current_pose is None:
-            return
-            
-        x0 = self.current_pose.pose.position.x
-        y0 = self.current_pose.pose.position.y
-        theta0 = self.current_pose.pose.orientation.z
-        
-        offset_angle = np.radians(5)
-        
-        path_points = []
-        headings = []
-        heading = theta0 + offset_angle
-        for i in range(1, 6):
-            distance = 1.2 * i
-            x = x0 + distance * np.cos(heading)
-            y = y0 + distance * np.sin(heading)
-            
-            heading = heading + offset_angle  
-            
-            heading = (heading + np.pi) % (2 * np.pi) - np.pi
-            
-            path_points.append([x, y,heading])
-        
-        self.current_path = np.array(path_points)
-        self.closest_idx = 0
-    
-        rospy.loginfo(f"Generated offset path with {len(path_points)} points and {path_points}")
-        return self.current_path
-
 
     def find_closest_point(self, path, current_pos):
      
@@ -118,75 +92,75 @@ class NavigationSystem:
         else:
             return 0
 
-    def run_control(self):
-        try:
-            while not rospy.is_shutdown():        
-                x_robot = self.current_pose.pose.position.x
-                y_robot = self.current_pose.pose.position.y
-                current_pos = (x_robot, y_robot)
-                theta_robot = self.current_pose.pose.orientation.z
-                
-                
-                self.closest_idx = self.find_closest_point(self.current_path, current_pos)
-                closest_point = self.current_path[self.closest_idx][:2]
-                if self.closest_idx + 1 < len(self.current_path):
-                    side = self.chkside(self.closest_idx,current_pos)
-                    remid = self.closest_idx + side
-                else:
-                    remid = self.closest_idx
-                remaining_path = self.prune_passed_points(self.current_path, remid)
-                
-                
-                x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
-                goal_distance = np.sqrt((x_goal - x_robot)**2 + (y_goal - y_robot)**2)
-                
-                self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
-                
-                if goal_distance < self.goal_distance_threshold:
-                    cmd_vel = Twist()  
-                    cmd_vel.linear.x = 0
-                    cmd_vel.angular.z = 0
-                    self.cmd_vel.publish(cmd_vel)
-                    rospy.loginfo("Goal reached!")
-                    self.reached = True
-                    break
-                
-                lookahead_point, lookahead_idx = self.find_lookahead_point(
-                    remaining_path, current_pos, 0)
-                
-                actual_lookahead_idx = self.closest_idx + lookahead_idx
-                heading_ref = self.current_path[actual_lookahead_idx][2]                    
+    
 
-                heading_error = heading_ref - theta_robot
-                heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
-                
-                print("Error",heading_error)                       
-                if self.fp == True:                            
-                    if np.abs(heading_error) < np.pi/2:
-                        self.fp = False
-                        v = self.v_max
-                    else:
-                        v = 0
-                elif goal_distance < self.slow_down_distance:
-                    v = self.v_min + (self.v_max - self.v_min) * (goal_distance / self.slow_down_distance)
-                else:
-                    v = self.v_max
-                omega = self.k_angular * heading_error
-                max_omega = 1.2
-                omega = np.clip(omega, -max_omega, max_omega)
-                print("omega",omega)
-                cmd_vel = Twist()
-                cmd_vel.linear.x = v
-                cmd_vel.angular.z = omega
-                self.cmd_vel.publish(cmd_vel)
-            
 
-            self.control_rate.sleep()
-                
-        finally:
-            if self.recording_file is not None:
-                self.recording_file.close()
-                rospy.loginfo("Data recording file closed")
+
+    def run_control(self, is_last_goal=False):
+        if self.current_pose is None or self.current_path is None:
+            return False  
+
+        x_robot = self.current_pose.pose.position.x
+        y_robot = self.current_pose.pose.position.y
+        current_pos = (x_robot, y_robot)
+        theta_robot = self.current_pose.pose.orientation.z
+
+        self.closest_idx = self.find_closest_point(self.current_path, current_pos)
+        closest_point = self.current_path[self.closest_idx]
+
+        if self.closest_idx + 1 < len(self.current_path):
+            side = self.chkside(self.closest_idx, current_pos)
+            remid = self.closest_idx + side
+        else:
+            remid = self.closest_idx
+
+        remaining_path = self.prune_passed_points(self.current_path, remid)
+
+        x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
+        goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
+
+        self.record_data(self.current_pose, closest_point, self.closest_idx, goal_distance)
+
+        if goal_distance < self.goal_distance_threshold:
+            cmd_vel = Twist()
+            cmd_vel.linear.x = 0
+            cmd_vel.angular.z = 0
+            self.cmd_vel.publish(cmd_vel)
+            rospy.loginfo("Goal reached!")
+            self.reached = True
+            return True  
+
+        lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
+        actual_lookahead_idx = self.closest_idx + lookahead_idx
+        heading_ref = self.current_headings[actual_lookahead_idx]
+
+        heading_error = heading_ref - theta_robot
+
+        if self.fp:
+            if np.abs(heading_error) < np.pi / 2:
+                self.fp = False
+                v = self.v_max
+            else:
+                v = 0
+        else:
+            slow_down_dist = self.slow_down_distance
+            if goal_distance < slow_down_dist and is_last_goal == True:
+                v = self.v_min + (self.v_max - self.v_min) * (goal_distance / slow_down_dist)
+            else:
+                v = self.v_max
+
+        omega = self.k_angular * heading_error
+        omega = np.clip(omega, -1.2, 1.2)
+
+        cmd_vel = Twist()
+        cmd_vel.linear.x = v
+        cmd_vel.angular.z = omega
+        self.cmd_vel.publish(cmd_vel)
+
+        self.control_rate.sleep()
+
+        return False  
+
 
 if __name__ == '__main__':
     try:

@@ -101,7 +101,7 @@ from local_planner import execute_planning, robot_radius
 
 
 start = (143,87)
-goal = (130,75)
+goal = (130,95)
 
 
 start_time = time.time()
