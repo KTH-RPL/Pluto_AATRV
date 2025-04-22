@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import rospy
 import argparse
 from geometry_msgs.msg import PoseStamped, Twist
@@ -15,7 +15,7 @@ class LivePlot:
 
         self.robot_pose = None
         self.goal_pose = None
-        self.global_path = []
+        self.global_path = None
         self.vel_history = deque(maxlen=100)
         self.error_history = deque(maxlen=100)
 
@@ -39,7 +39,8 @@ class LivePlot:
         self.goal_pose = msg
 
     def global_path_cb(self, msg):
-        self.global_path = [(pose.pose.position.x, pose.pose.position.y) for pose in msg.poses]
+        if not self.global_path:
+            self.global_path = [(pose.pose.position.x, pose.pose.position.y) for pose in msg.poses]
 
     def cmd_vel_cb(self, msg):
         self.vel_history.append((msg.linear.x, msg.angular.z))
