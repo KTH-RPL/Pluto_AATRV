@@ -30,7 +30,7 @@ class M1BehaviourTree(ptr.trees.BehaviourTree):
 
         self.setup(timeout=10000)
         while not rospy.is_shutdown():
-            self.tick_tock(1)
+            self.tick_tock(0.05)
             rospy.loginfo("\n" + display.unicode_tree(self.root, show_status=True))
 
 
@@ -70,14 +70,10 @@ class goal_reached(pt.behaviour.Behaviour):
         self.robot_pose = msg.position
 
     def update(self):
-        if self.goal_manager.current_goal is None:
-            rospy.loginfo("[goal_reached] No current goal to check.")
-            return pt.common.Status.FAILURE
-
         if self.robot_pose:
             goal_pose = self.goal_manager.current_goal.position
-            distance = ((self.robot_pose.x - goal_pose.x) ** 2 +
-                        (self.robot_pose.y - goal_pose.y) ** 2) ** 0.5
+            distance = ((self.robot_pose.pose.position.x - self.goal_pose.pose.position.x) ** 2 +
+                    (self.robot_pose.pose.position.y - self.goal_pose.pose.position.y) ** 2) ** 0.5
 
             if distance < 0.2:
                 if (len(self.goal_manager.goals) == 0):
@@ -107,10 +103,6 @@ class planning_control(pt.behaviour.Behaviour):
 
     def update(self):
       current_goal = self.goal_manager.current_goal
-      if current_goal is None:
-          rospy.loginfo("[planning_control] No goal to plan for.")
-          return pt.common.Status.FAILURE
-
       if self.goal_manager.nextgoal == True:
           goal_pose = current_goal.position
           self.nav_system.current_goal = goal_pose
@@ -125,7 +117,7 @@ class planning_control(pt.behaviour.Behaviour):
           is_last_goal = (len(self.goal_manager.goals) == 0)
           self.nav_system.run_control(is_last_goal=is_last_goal)
           return pt.common.Status.RUNNING
-          
+
 if __name__ == "__main__":
     print(sys.executable)
     rospy.init_node("behaviour_tree_controller")
