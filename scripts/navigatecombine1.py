@@ -26,7 +26,7 @@ class NavigationSystem:
         self.k_angular = 3           
         self.v_max = 0.5             
         self.v_min = 0.2            
-        self.goal_distance_threshold = 0.2
+        self.goal_distance_threshold = 1
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
         self.max_lookahead = 1.5    

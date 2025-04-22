@@ -65,7 +65,7 @@ class goal_reached(pt.behaviour.Behaviour):
             distance = ((self.robot_pose.pose.position.x - self.goal_pose.pose.position.x) ** 2 +
                     (self.robot_pose.pose.position.y - self.goal_pose.pose.position.y) ** 2) ** 0.5
 
-            if distance < 0.2:  # threshold
+            if distance < 1:  # threshold
                 self.goal_reached = True
         else:
             rospy.logerr("[goal_reached] Didn't get the goal and robot pose")
