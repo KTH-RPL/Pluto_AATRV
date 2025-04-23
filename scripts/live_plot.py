@@ -157,7 +157,8 @@ if __name__ == '__main__':
     try:
         plotter = LivePlot(plot_local=args.plot_local)
         plotter.run()
+    except KeyboardInterrupt:
+        plt.close("all")
+        exit()
     except rospy.ROSInterruptException:
         pass
-    except KeyboardInterrupt:
-        exit()
