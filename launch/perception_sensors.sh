@@ -23,3 +23,5 @@ xterm -T "Launch Ouster" -geometry 80x15+0+	 -e "roslaunch ouster_ros sensor.lau
 
 # Launch the realsense camera
 xterm -T "Launch D455" -geometry 80x15+0+350 -e "roslaunch realsense2_camera rs_camera_D455_0.launch" & sleep 2
+
+xterm -T "Perception Rosbag" -geometry 80x15+0+ -e "rosbag record /rsD455_node0/color/image_raw /os_cloud_node/points /rsD455_node0/depth/image_rect_raw /vectornav/Odom /atrv/odom /reach/fix /robot_pose /clock" & sleep 2
