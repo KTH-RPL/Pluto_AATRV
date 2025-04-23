@@ -40,7 +40,7 @@ class LivePlot:
     def goal_pose_cb(self, msg):
         self.goal_pose = msg
     
-    def goal_pose_cb(self, msg):
+    def lookahead_cb(self, msg):
         self.lookahead_pose = msg
     
     def global_path_cb(self, msg):

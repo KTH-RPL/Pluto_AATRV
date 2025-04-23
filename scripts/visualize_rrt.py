@@ -100,8 +100,8 @@ polygon_map = PolygonMap(boundary_file, obstacle_files)
 from local_planner import execute_planning, robot_radius
 
 
-start = (143,87)
-goal = (130,95)
+start = (0,0)
+goal = (1.5,1.5)
 
 
 start_time = time.time()

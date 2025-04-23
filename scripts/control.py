@@ -114,9 +114,8 @@ class NavigationSystem:
         x_robot = self.current_pose.pose.position.x
         y_robot = self.current_pose.pose.position.y
         current_pos = (x_robot, y_robot) 
-        while(self.distancecalc(self.current_path[self.targetid]),current_pos):
-            if self.targetid+1< len*self.current_path:
-                self.targetid+=1
+        while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
+            self.targetid+=1
         
         theta_robot = self.current_pose.pose.orientation.z
 
@@ -130,7 +129,7 @@ class NavigationSystem:
         #     remid = self.closest_idx
 
         # remaining_path = self.prune_passed_points(self.current_path, remid)
-
+        
         x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
         goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
 

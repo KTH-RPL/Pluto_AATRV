@@ -112,6 +112,7 @@ class planning_control(pt.behaviour.Behaviour):
           goal_pose = current_goal.position
           self.nav_system.current_goal = goal_pose
           self.nav_system.current_pose = self.robot_pose
+          self.nav_system.targetid = 0
           self.nav_system.current_path, _, _, _ = execute_planning(goal_pose, self.robot_pose)
 
           rospy.loginfo("[planning_control] Path generated.")

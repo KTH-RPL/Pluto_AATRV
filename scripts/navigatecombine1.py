@@ -42,6 +42,7 @@ class NavigationSystem:
         self.gen = False
         self.finished = False
         self.reached = False
+        self.targetid = 0
         self.fp = True
         rospy.loginfo("Pluto Navigation System initialized")
 
@@ -286,7 +287,7 @@ class NavigationSystem:
                         x_robot = self.current_pose.pose.position.x
                         y_robot = self.current_pose.pose.position.y
                         current_pos = (x_robot, y_robot) 
-                        while(self.distancecalc(self.current_path[self.targetid]),current_pos):
+                        while(self.distancecalc(self.current_path[self.targetid],current_pos)):
                             if self.targetid+1< len*self.current_path:
                                 self.targetid+=1
                         
@@ -390,11 +391,11 @@ class NavigationSystem:
                         
                         lookahead_point, lookahead_idx = self.find_lookahead_point(
                             remaining_path, current_pos, 0)
-                        self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
                         actual_lookahead_idx = self.closest_idx + lookahead_idx
                         # heading_ref = self.current_headings[actual_lookahead_idx]                    
                         heading_ref = self.current_path[actual_lookahead_idx][2]
-                        
+                        self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
+
                         heading_error = heading_ref - theta_robot
                         if np.abs(heading_error) > np.pi:
                             heading_error = -(heading_error - 2*np.pi)
