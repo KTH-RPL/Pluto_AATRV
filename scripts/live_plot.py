@@ -23,7 +23,7 @@ class LivePlot:
         # Choose topics based on --plot_local flag
         robot_pose_topic = '/local_robot_pose' if plot_local else '/robot_pose'
         goal_pose_topic = '/local_goal_pose' if plot_local else '/goal_pose'
-        path_topic = '/planned_path' if plot_local else '/global_planned_path'
+        path_topic = '/planned_path' if plot_local else '/planned_path'
         lookahead_point_topic = '/lookahead_point'
         rospy.Subscriber(robot_pose_topic, PoseStamped, self.robot_pose_cb)
         rospy.Subscriber(goal_pose_topic, PoseStamped, self.goal_pose_cb)

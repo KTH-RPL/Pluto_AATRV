@@ -23,7 +23,7 @@ class NavigationSystem:
         
         # Control parameters
         self.lookahead_distance = 1.5
-        self.k_angular = 3           
+        self.k_angular = 1           
         self.v_max = 0.5             
         self.v_min = 0.2            
         self.goal_distance_threshold = 1
@@ -45,6 +45,14 @@ class NavigationSystem:
         self.fp = True
         rospy.loginfo("Pluto Navigation System initialized")
 
+
+    def distancecalc(self,x1,x2):
+        dist = np.sqrt((x1[0] - x2[0])**2 + (x1[1] - x2[1])**2)
+        if dist < 1.2:
+            return 1
+        else:
+            return 0
+        
     def setup_data_recording(self):
         # Create a directory for logs if it doesn't exist
         log_dir = os.path.join(os.path.expanduser('~'), 'robot_navigation_logs')
@@ -269,6 +277,83 @@ class NavigationSystem:
             return 1
         else:
             return 0
+    
+    def run_control1(self):
+        try:
+            while not rospy.is_shutdown():
+                if self.poserec and self.goalrec and not self.reached:
+                    if self.gen is True and self.current_path is not None and self.current_pose is not None:
+                        x_robot = self.current_pose.pose.position.x
+                        y_robot = self.current_pose.pose.position.y
+                        current_pos = (x_robot, y_robot) 
+                        while(self.distancecalc(self.current_path[self.targetid]),current_pos):
+                            if self.targetid+1< len*self.current_path:
+                                self.targetid+=1
+                        
+                        theta_robot = self.current_pose.pose.orientation.z
+                        
+                        
+                        x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
+                        goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
+
+
+                        # if goal_distance < self.goal_distance_threshold:
+                        #     cmd_vel = Twist()
+                        #     cmd_vel.linear.x = 0
+                        #     cmd_vel.angular.z = 0
+                        #     self.cmd_vel.publish(cmd_vel)
+                        #     rospy.loginfo("Goal reached!")
+                        #     self.reached = True
+                        #     return True  
+
+                        # lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
+                        actual_lookahead_idx = self.targetid
+                        self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
+                        # heading_ref = self.current_headings[actual_lookahead_idx]                    
+                        heading_ref = self.current_path[actual_lookahead_idx][2]
+                        
+                        heading_error = heading_ref - theta_robot
+                        if np.abs(heading_error) > np.pi:
+                            heading_error = -(heading_error - 2*np.pi)
+
+                        print("pose ",current_pos)
+                        print("point ",self.current_path[actual_lookahead_idx])
+                        
+                        print("Error",heading_error)                       
+                        if self.fp == True:                            
+                            if np.abs(heading_error) < np.pi/2:
+                                self.fp = False
+                                v = self.v_max
+                            else:
+                                v = 0
+                        elif goal_distance < self.slow_down_distance:
+                            v = self.v_min + (self.v_max - self.v_min) * (goal_distance / self.slow_down_distance)
+                        else:
+                            v = self.v_max
+                        
+                        
+                        omega = self.k_angular * heading_error
+                        max_omega = 0.8
+                        omega = np.clip(omega, -max_omega, max_omega)
+                        print("omega",omega)
+                        cmd_vel = Twist()
+                        cmd_vel.linear.x = v
+                        cmd_vel.angular.z = omega
+                        self.cmd_vel.publish(cmd_vel)
+                        
+                    else:
+                        cmd_vel = Twist()  
+                        cmd_vel.linear.x = 0
+                        cmd_vel.angular.z = 0
+                        self.cmd_vel.publish(cmd_vel)
+
+                self.control_rate.sleep()
+                
+        finally:
+            if self.recording_file is not None:
+                self.recording_file.close()
+                rospy.loginfo("Data recording file closed")
+
 
     def run_control(self):
         try:

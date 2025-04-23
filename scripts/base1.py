@@ -63,6 +63,7 @@ class goal_reached(pt.behaviour.Behaviour):
         self.navsystem = navsystem
         self.robot_pose = None
         self.goal_pose = None
+        self.fp = False
 
         rospy.Subscriber("/robot_pose", Pose, self.robotPose_callback)
 
@@ -71,6 +72,10 @@ class goal_reached(pt.behaviour.Behaviour):
 
     def update(self):
         if self.robot_pose:
+            if self.fp ==  False:
+                rospy.loginfo("[goal_reached] Got the goal and robot pose")
+                self.fp = True
+            rospy.loginfo("[goal_reached] Checking Goal Condition")
             goal_pose = self.goal_manager.current_goal.position
             distance = ((self.robot_pose.pose.position.x - self.goal_pose.pose.position.x) ** 2 +
                     (self.robot_pose.pose.position.y - self.goal_pose.pose.position.y) ** 2) ** 0.5
@@ -108,15 +113,15 @@ class planning_control(pt.behaviour.Behaviour):
           self.nav_system.current_goal = goal_pose
           self.nav_system.current_pose = self.robot_pose
           self.nav_system.current_path, _, _, _ = execute_planning(goal_pose, self.robot_pose)
+
           rospy.loginfo("[planning_control] Path generated.")
           self.path_generated = True
           self.goal_manager.nextgoal = False
           rospy.sleep(1)
-
-      elif self.path_generated:
-          is_last_goal = (len(self.goal_manager.goals) == 0)
-          self.nav_system.run_control(is_last_goal=is_last_goal)
-          return pt.common.Status.RUNNING
+      rospy.loginfo("[planning_control] Control ")
+      is_last_goal = (len(self.goal_manager.goals) == 0)
+      self.nav_system.run_control(is_last_goal=is_last_goal)
+      return pt.common.Status.RUNNING
 
 if __name__ == "__main__":
     print(sys.executable)

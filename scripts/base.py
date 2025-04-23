@@ -46,6 +46,7 @@ class goal_reached(pt.behaviour.Behaviour):
         self.goal_reached = False
         self.robot_pose = None
         self.goal_pose = None
+        self.fp = False
         
 
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
@@ -60,8 +61,10 @@ class goal_reached(pt.behaviour.Behaviour):
     def update(self):
 
         if self.goal_pose and self.robot_pose:
-            rospy.loginfo("[goal_reached] Got the goal and robot pose")
-           
+            if self.fp ==  False:
+                rospy.loginfo("[goal_reached] Got the goal and robot pose")
+                self.fp = True
+            rospy.loginfo("[goal_reached] Checking Goal Condition")
             distance = ((self.robot_pose.pose.position.x - self.goal_pose.pose.position.x) ** 2 +
                     (self.robot_pose.pose.position.y - self.goal_pose.pose.position.y) ** 2) ** 0.5
 
@@ -72,6 +75,7 @@ class goal_reached(pt.behaviour.Behaviour):
             return pt.common.Status.RUNNING
 
         if self.goal_reached:
+            rospy.loginfo("[goal_reached] Goal Reached")
             return pt.common.Status.SUCCESS
         else:
             return pt.common.Status.FAILURE
@@ -92,9 +96,7 @@ class planning_control(pt.behaviour.Behaviour):
 
 
     def goal_callback(self, msg):    
-        self.goal_pose = msg    
-
-           
+        self.goal_pose = msg               
 
     def robotPose_callback(self, msg):
         self.robot_pose = msg
@@ -111,9 +113,10 @@ class planning_control(pt.behaviour.Behaviour):
             rospy.loginfo("[generate_path] Path generated successfully.")
             self.path_generated = True   
             self.nav_system.current_path = self.path   
-            rospy.sleep(10)
+            rospy.sleep(1)
 
         elif self.path_generated:
+            rospy.loginfo("[planning_control] Control ")
             self.nav_system.run_control()
             return pt.common.Status.RUNNING
         else:
