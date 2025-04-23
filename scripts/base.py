@@ -106,6 +106,7 @@ class planning_control(pt.behaviour.Behaviour):
         if not self.path_generated:
             self.nav_system.current_goal = self.goal_pose
             self.nav_system.current_pose = self.robot_pose
+            self.nav_system.targetid = 0
             # self.path = nav_system.generate_offset_path()
             goal = (self.goal_pose.pose.position.x, self.goal_pose.pose.position.y)
             robot = (self.robot_pose.pose.position.x, self.robot_pose.pose.position.y)

@@ -79,7 +79,7 @@ def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_n
 
     return neighbors
 
-def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=2, goal_threshold=1, num_samples=5, max_iter=1000000, prob_goal_bias=0.2, verbose=False):
+def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=0.4, goal_threshold=0.3, num_samples=5, max_iter=1000000, prob_goal_bias=0.2, verbose=False):
     tree = {start: None}
     nodes = [start]
     explored = []

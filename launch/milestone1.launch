@@ -7,7 +7,7 @@
     <include file="$(find vectornav)/launch/vectornav.launch" />
     <include file="$(find pluto)/launch/pluto.launch" />
 
-    <node pkg="milestone1" type="publishers.py" name="publishers"/>
+    <node pkg="milestone1" type="publishers1.py" name="publishers"/>
     
     <node pkg="milestone1" type="send_goal.py" name="goal_publisher"/>
     
