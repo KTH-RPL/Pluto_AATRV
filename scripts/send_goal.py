@@ -12,8 +12,8 @@ def publish_goal():
     
     while not rospy.is_shutdown():
         goal.header.stamp = rospy.Time.now()
-        goal.pose.position.x = rospy.get_param('~x', 1.50)
-        goal.pose.position.y = rospy.get_param('~y', 1.5)
+        goal.pose.position.x = rospy.get_param('~x', 1.5)
+        goal.pose.position.y = rospy.get_param('~y', 1.0)
         pub.publish(goal)
         rospy.loginfo_throttle(5, "Published goal: (%.2f, %.2f)", goal.pose.position.x, goal.pose.position.y)
         rate.sleep()

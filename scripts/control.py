@@ -13,7 +13,8 @@ class NavigationSystem:
         
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=10)
         self.cmd_vel = rospy.Publisher('/atrv/cmd_vel', Twist, queue_size=10)
-        
+        self.look_pub = rospy.Publisher('/lookahead_point', PoseStamped, queue_size=10)
+
         # Initialize data recording
         
         
