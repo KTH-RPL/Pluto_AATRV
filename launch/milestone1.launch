@@ -11,7 +11,7 @@
     
     <node pkg="milestone1" type="send_goal1.py" name="goal_publisher"/>
     
-    <node pkg="rosbag" type="record" name="motion_rosbag"/>
+    <node pkg="rosbag" type="record" name="motion_rosbag" output="screen" args="--all"/>
 
 
 </launch>

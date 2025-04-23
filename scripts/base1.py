@@ -83,7 +83,7 @@ class goal_reached(pt.behaviour.Behaviour):
             distance = ((self.robot_pose.pose.position.x - self.goal_pose.position.x) ** 2 +
                     (self.robot_pose.pose.position.y - self.goal_pose.position.y) ** 2) ** 0.5
 
-            if distance < 0.2:
+            if distance < 0.5:
                 if (len(self.goal_manager.goals) == 0):
                     rospy.loginfo("[goal_reached] Final Goal reached!")
                     self.navsystem.stop_robot()                    
