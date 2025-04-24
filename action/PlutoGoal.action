@@ -1,0 +1,12 @@
+
+# Goal
+geometry_msgs/Pose goal
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+string status
