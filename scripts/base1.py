@@ -39,15 +39,16 @@ class GoalManager:
         self.goals = []
         self.current_goal = None
         self.nextgoal = True
+        self.fp = False
         rospy.Subscriber("/goal_pose", PoseArray, self.goals_callback)
 
     def goals_callback(self, msg):
         # rospy.loginfo("Received new goal list.")
-        if not self.goals:
+        if not self.fp:
             self.goals = list(msg.poses)
             # rospy.loginfo(self.goals)
-            if self.goals:
-                self.current_goal = self.goals.pop(0)
+            self.current_goal = self.goals.pop(0)
+            self.fp = True
 
     def advance_goal(self):
         if self.goals:
@@ -55,7 +56,7 @@ class GoalManager:
         else:
             self.current_goal = None
         
-        self.next_goal = True
+        self.nextgoal = True
 
 
 class goal_reached(pt.behaviour.Behaviour):
@@ -74,6 +75,7 @@ class goal_reached(pt.behaviour.Behaviour):
 
     def update(self):
         if self.robot_pose and self.goal_manager.current_goal:
+            
             if self.fp ==  False:
                 rospy.loginfo("[goal_reached] Got the goal and robot pose")
                 self.fp = True
@@ -90,9 +92,13 @@ class goal_reached(pt.behaviour.Behaviour):
                     return pt.common.Status.SUCCESS
                 else:
                     rospy.loginfo("[goal_reached] Intermediate Goal reached!")
-                    rospy.loginfo(self.goal_pose)
+                    self.navsystem.stop_robot()  
+                    rospy.sleep(1)
+   
 
                     self.goal_manager.advance_goal()
+                    # rospy.loginfo(self.goal_manager.current_goal)
+
                     return pt.common.Status.FAILURE
             return pt.common.Status.FAILURE
         else:
@@ -115,11 +121,15 @@ class planning_control(pt.behaviour.Behaviour):
 
     def update(self):
       current_goal = self.goal_manager.current_goal
+    #   print("plancontrol ")
+    #   rospy.loginfo(self.goal_manager.current_goal)
+
       if self.goal_manager.nextgoal == True:
           goal_pose = (current_goal.position.x,current_goal.position.y)
           self.nav_system.current_goal = goal_pose
           self.nav_system.current_pose = self.robot_pose
           self.nav_system.targetid = 0
+          self.nav_system.fp = True
           current_position = (self.robot_pose.pose.position.x, 
                           self.robot_pose.pose.position.y)
           self.nav_system.current_path, _, _, _ = execute_planning(current_position,goal_pose)
@@ -128,6 +138,7 @@ class planning_control(pt.behaviour.Behaviour):
           self.path_generated = True
           self.goal_manager.nextgoal = False
           rospy.sleep(1)
+      self.nav_system.current_pose = self.robot_pose
       is_last_goal = (len(self.goal_manager.goals) == 0)
       self.nav_system.run_control(is_last_goal=is_last_goal)
       return pt.common.Status.RUNNING

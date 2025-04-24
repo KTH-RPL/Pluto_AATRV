@@ -14,6 +14,7 @@ def publish_goal_list():
     goal_positions = [
         (1.0, 0.0),
         (2.0, 0.0),
+        (0.0,0.0),
     ]
 
     for pos in goal_positions:

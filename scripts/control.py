@@ -151,6 +151,8 @@ class NavigationSystem:
         heading_ref = self.current_path[actual_lookahead_idx][2]
         # heading_ref = self.current_headings[actual_lookahead_idx]
         heading_error = heading_ref - theta_robot
+        if np.abs(heading_error) > np.pi:
+            heading_error = -(heading_error - 2*np.pi)
 
         if self.fp:
             if np.abs(heading_error) < np.pi / 2:
@@ -164,7 +166,10 @@ class NavigationSystem:
                 v = self.v_min + (self.v_max - self.v_min) * (goal_distance / slow_down_dist)
             else:
                 v = self.v_max
-
+        print("pose ",current_pos)
+        print("point ",self.current_path[actual_lookahead_idx])
+        
+        print("Error",heading_error)
         omega = self.k_angular * heading_error
         omega = np.clip(omega, -1.2, 1.2)
 
@@ -211,6 +216,8 @@ class NavigationSystem:
         heading_ref = self.current_path[actual_lookahead_idx][2]
 
         heading_error = heading_ref - theta_robot
+        if np.abs(heading_error) > np.pi:
+            heading_error = -(heading_error - 2*np.pi)
 
         if self.fp:
             if np.abs(heading_error) < np.pi / 2:
@@ -228,7 +235,10 @@ class NavigationSystem:
         omega = self.k_angular * heading_error
         max_omega = 0.8
         omega = np.clip(omega, -max_omega, max_omega)
-
+        print("pose ",current_pos)
+        print("point ",self.current_path[actual_lookahead_idx])
+        
+        print("Error",heading_error)
         cmd_vel = Twist()
         cmd_vel.linear.x = v
         cmd_vel.angular.z = omega

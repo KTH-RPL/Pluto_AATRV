@@ -69,7 +69,7 @@ class goal_reached(pt.behaviour.Behaviour):
             distance = ((self.robot_pose.pose.position.x - self.goal_pose.pose.position.x) ** 2 +
                     (self.robot_pose.pose.position.y - self.goal_pose.pose.position.y) ** 2) ** 0.5
 
-            if distance < 1:  # threshold
+            if distance < 1.5:  # threshold
                 self.navsystem.stop_robot()                    
 
                 self.goal_reached = True
@@ -121,6 +121,8 @@ class planning_control(pt.behaviour.Behaviour):
 
         elif self.path_generated:
             rospy.loginfo("[planning_control] Control ")
+            self.nav_system.current_pose = self.robot_pose
+
             self.nav_system.run_control()
             return pt.common.Status.RUNNING
         else:
