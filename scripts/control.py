@@ -250,13 +250,13 @@ class NavigationSystem:
         elif heading_error < np.pi:
             heading_error = (heading_error + 2*np.pi)
 
-        if np.abs(heading_error) > np.pi/25:
+        if np.abs(heading_error) > np.pi/20:
             self.iheading+=heading_error
         else:
             self.iheading*=0.8
         
-        if np.abs(ey) > 0.5:
-            self.iy+=ey
+        if np.abs(ey) > 0.8:
+            self.iy+=0.1*ey
         else:
             self.iy*=0.8
 
