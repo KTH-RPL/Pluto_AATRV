@@ -21,9 +21,9 @@ class LivePlot:
         self.error_history = deque(maxlen=100)
         self.robot_poses_x = []
         self.robot_poses_y = []
-        self.goal_poses_x = []
-        self.goal_poses_y = []
-        self.global_paths = []
+        self.goal_poses_x = [0]
+        self.goal_poses_y = [0]
+        self.global_paths = [[0, 0]]
         # Choose topics based on --plot_local flag
         robot_pose_topic = '/local_robot_pose' if plot_local else '/robot_pose'
         goal_pose_topic = '/local_goal_pose' if plot_local else '/goal_pose'
@@ -66,22 +66,15 @@ class LivePlot:
 
         # Plot global path
         if self.global_path:
-            if self.global_paths[-1][0][0] != self.global_path[0][0] and self.global_paths[-1][0][1] != self.global_path[0][1]
-                self.global_paths.append(self.global_path)
-            for gp in self.global_paths:
-                path_x, path_y = zip(*gp)
-                self.ax_map.plot(path_x, path_y, 'b--', label='Global Path')
-                all_x.extend(path_x)
-                all_y.extend(path_y)
+            path_x, path_y = zip(*self.global_path)
+            self.ax_map.plot(path_x, path_y, 'b--', label='Global Path')
+            all_x.extend(path_x)
+            all_y.extend(path_y)
 
         # Plot goal
         if self.goal_pose:
             gx = self.goal_pose.pose.position.x
             gy = self.goal_pose.pose.position.y
-            if self.goal_poses_x[-1] != gx and self.goal_poses_y[-1] != gy
-                self.goal_poses_x.append(gx)
-                self.goal_poses_y.append(gy)
-            self.scatter(self.goal_poses_x, self.goal_poses_y, 'rs')
             self.ax_map.plot(gx, gy, 'ro', label='Goal')
             all_x.append(gx)
             all_y.append(gy)

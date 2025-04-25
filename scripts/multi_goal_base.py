@@ -22,8 +22,8 @@ class M1BehaviourTree(ptr.trees.BehaviourTree):
             name="Goal fallback",
             children=[goal_reached(c_goal), multi_goal_client]
         )
-
-        s1 = pt.composites.Sequence(name = "Home Sequence", children = [b0,GoHomeClient(c_goal)])
+        b1 = pt.composites.Selector(name="Home fallback",children=[TaskCompletedCondition(c_goal),GoHomeClient(c_goal)])
+        s1 = pt.composites.Sequence(name = "Pluto Sequence", children = [b0,b1])
 
         tree = RSequence(name="Main sequence", children=[b0, s1])
         super(M1BehaviourTree, self).__init__(tree)
@@ -62,6 +62,7 @@ class goal_reached(pt.behaviour.Behaviour):
         super(goal_reached, self).__init__("Goal_reached")
         self.robot_pose = None
         self.c_goal = c_goal
+        self.finished = False
         
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
 
@@ -69,6 +70,9 @@ class goal_reached(pt.behaviour.Behaviour):
         self.robot_pose = msg
 
     def update(self):
+        if self.finished == True:
+            return pt.common.Status.SUCCESS
+        
         if not self.c_goal.goals or not self.robot_pose:
             rospy.logerr("Either goal is empty or not getting robot_pose")
             return pt.common.Status.RUNNING
@@ -77,8 +81,9 @@ class goal_reached(pt.behaviour.Behaviour):
         current_pose = self.robot_pose.pose.position
         distance = ((current_pose.x - final_goal.x) ** 2 + (current_pose.y - final_goal.y) ** 2) ** 0.5
 
-        if distance < 1.0 and self.c_goal.goal_index == (len(self.c_goal.goals) - 1) :
+        if distance < 0.6 and self.c_goal.goal_index == (len(self.c_goal.goals) - 1) :
             rospy.loginfo("[goal_reached] Final goal reached.")
+            self.finished = True
             return pt.common.Status.SUCCESS
 
         return pt.common.Status.FAILURE

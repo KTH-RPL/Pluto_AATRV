@@ -56,7 +56,7 @@ class PlutoGoalActionServer:
 
         try:
             dist = ((self.robot_pose.pose.position.x - goal.goal.position.x )**2 + (self.robot_pose.pose.position.y - goal.goal.position.y )**2)**0.5
-            while dist > 1:    
+            while dist > 0.6:    
                 self.nav_system.current_pose = self.robot_pose
                 self.nav_system.run_control()  ## it can also return something whether we are heading correctly towards goal or should be abort current goal
                 dist = ((self.robot_pose.pose.position.x - goal.goal.position.x )**2 + (self.robot_pose.pose.position.y - goal.goal.position.y )**2)**0.5

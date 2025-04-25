@@ -19,7 +19,7 @@ class NavigationSystem:
         
         
         # Control parameters
-        self.lookahead_distance = 1.5      
+        self.lookahead_distance = 2.0      
         self.v_max = 0.6            
         self.v_min = 0.2            
         self.goal_distance_threshold = 0.2
@@ -46,11 +46,11 @@ class NavigationSystem:
         self.dy = 0
 
 
-        self.k_angular = 1 
-        self.ky = 1
+        self.k_angular = 1.5 
+        self.ky = 0
         self.ik = 0.5
         self.ih = 0.5
-        self.dey = 1
+        self.dey = 0
 
 
         self.iy = 0
@@ -244,11 +244,11 @@ class NavigationSystem:
         self.dy = self.current_path[actual_lookahead_idx][1] - current_pos[1]
         ey = -np.sin(pathorientation) * self.dx + np.cos(pathorientation) * self.dy
         heading_error = heading_ref - theta_robot
-        
+        rospy.loginfo_throttle(1,"Error Prev{}".format(heading_error))
 
         if heading_error > np.pi:
-            heading_error = -(heading_error - 2*np.pi)
-        elif heading_error < np.pi:
+            heading_error = (heading_error - 2*np.pi)
+        elif heading_error < -np.pi:
             heading_error = (heading_error + 2*np.pi)
 
         if np.abs(heading_error) > np.pi/20:
@@ -260,13 +260,13 @@ class NavigationSystem:
             self.iy+=0.1*ey
         else:
             self.iy*=0.8
-
+        dey = 0
         if self.prevdy!=0:
             dey = self.dy - self.prevdy
         
         
         if self.fp:
-            if np.abs(heading_error) < np.pi / 20:
+            if np.abs(heading_error) < np.pi / 8:
                 self.fp = False
                 v = self.v_max
             else:
@@ -278,12 +278,12 @@ class NavigationSystem:
             else:
                 v = self.v_max
 
-        omega = self.k_angular * heading_error - self.ky* ey - self.ik * self.iy + self.ih * self.iheading - self.dey * dey
-        max_omega = 1.2
+        omega = self.k_angular * heading_error + self.ky* ey - self.ik * self.iy + self.ih * self.iheading - self.dey * dey
+        max_omega = 0.8
         omega = np.clip(omega, -max_omega, max_omega)
-        rospy.loginfo_throttle(1,"pose {}".format(current_pos))
+        rospy.loginfo_throttle(1,"pose {}".format(current_pos,theta_robot))
         rospy.loginfo_throttle(1,"point {}".format(self.current_path[actual_lookahead_idx]))
-        rospy.loginfo_throttle(1,"Error {}".format(heading_error))
+        rospy.loginfo_throttle(1,"Error {}".format(heading_error,ey))
 
         cmd_vel = Twist()
         cmd_vel.linear.x = v
