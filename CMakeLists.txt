@@ -12,7 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   roscpp
   rospy
-  sensor_msgs
   actionlib_msgs
   actionlib
   message_generation
@@ -76,6 +75,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## Generate actions in the 'action' folder
 add_action_files(
+  DIRECTORY action
   FILES
   PlutoGoal.action  
 )
@@ -83,7 +83,8 @@ add_action_files(
 ## Generate added messages and services with any dependencies listed here
 generate_messages(
   DEPENDENCIES
-  geometry_msgs#   nav_msgs#   sensor_msgs
+  geometry_msgs   
+  nav_msgs
   actionlib_msgs
 )
 
@@ -119,7 +120,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pluto_aatrv
-CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs vectornav message_runtime actionlib actionlib_msgs
+CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy  vectornav message_runtime actionlib actionlib_msgs
 #  DEPENDS system_lib
   
 )

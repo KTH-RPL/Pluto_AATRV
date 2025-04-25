@@ -21,12 +21,17 @@ class NavigationSystem:
         # Control parameters
         self.lookahead_distance = 1.5
         self.k_angular = 1       
-        self.v_max = 0.5             
+        self.v_max = 0.6            
         self.v_min = 0.2            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
-        self.max_lookahead = 1.5    
+        self.max_lookahead = 1.5 
+        self.k_dey = 1
+        self.k_det = 2
+        self.k_y = 1
+        self.kw = 0.2
+        self.prev_omega = 0 
         self.pathgen = False
         self.current_goal = None
         self.current_pose = None
@@ -117,7 +122,8 @@ class NavigationSystem:
         current_pos = (x_robot, y_robot) 
         while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
             self.targetid+=1
-        
+        self.current_path = self.current_path[self.targetid:]
+        self.targetid = 0
         theta_robot = self.current_pose.pose.orientation.z
 
         # self.closest_idx = self.find_closest_point(self.current_path, current_pos)
@@ -170,13 +176,16 @@ class NavigationSystem:
         print("point ",self.current_path[actual_lookahead_idx])
         
         print("Error",heading_error)
-        omega = self.k_angular * heading_error
+        e_y = np.sin(heading_ref) * (x_robot - self.current_path[actual_lookahead_idx][0]) - np.cos(heading_ref) * (y_robot - self.current_path[actual_lookahead_idx][1])
+        de_y = v * heading_error
+        omega = self.k_y * e_y - self.k_angular * heading_error
         omega = np.clip(omega, -1.2, 1.2)
 
         cmd_vel = Twist()
         cmd_vel.linear.x = v
         cmd_vel.angular.z = omega
         self.cmd_vel.publish(cmd_vel)
+        self.prev_omega = omega
 
     def run_control(self, is_last_goal=False): 
 
@@ -184,17 +193,20 @@ class NavigationSystem:
         y_robot = self.current_pose.pose.position.y
         current_pos = (x_robot, y_robot)
         theta_robot = self.current_pose.pose.orientation.z
+        while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
+            self.targetid+=1
+        self.current_path = self.current_path[self.targetid:]
+        self.targetid = 0
+        # self.closest_idx = self.find_closest_point(self.current_path, current_pos)
+        # closest_point = self.current_path[self.closest_idx]
 
-        self.closest_idx = self.find_closest_point(self.current_path, current_pos)
-        closest_point = self.current_path[self.closest_idx]
+        # if self.closest_idx + 1 < len(self.current_path):
+        #     side = self.chkside(self.closest_idx, current_pos)
+        #     remid = self.closest_idx + side
+        # else:
+        #     remid = self.closest_idx
 
-        if self.closest_idx + 1 < len(self.current_path):
-            side = self.chkside(self.closest_idx, current_pos)
-            remid = self.closest_idx + side
-        else:
-            remid = self.closest_idx
-
-        remaining_path = self.prune_passed_points(self.current_path, remid)
+        # remaining_path = self.prune_passed_points(self.current_path, remid)
 
         x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
         goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
@@ -209,18 +221,20 @@ class NavigationSystem:
         #     self.reached = True
         #     return True  
 
-        lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
-        actual_lookahead_idx = self.closest_idx + lookahead_idx
+        # lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
+        actual_lookahead_idx = self.targetid
         self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
 
-        heading_ref = self.current_path[actual_lookahead_idx][2]
+        heading_ref = np.arctan2(self.current_path[actual_lookahead_idx][1] - current_pos[1], self.current_path[actual_lookahead_idx][0] - current_pos[0])
+        # self.current_path = self.current_path[actual_lookahead_idx:]
+
 
         heading_error = heading_ref - theta_robot
         if np.abs(heading_error) > np.pi:
             heading_error = -(heading_error - 2*np.pi)
 
         if self.fp:
-            if np.abs(heading_error) < np.pi / 2:
+            if np.abs(heading_error) < np.pi / 20:
                 self.fp = False
                 v = self.v_max
             else:
@@ -233,12 +247,12 @@ class NavigationSystem:
                 v = self.v_max
 
         omega = self.k_angular * heading_error
-        max_omega = 0.8
+        max_omega = 1.2
         omega = np.clip(omega, -max_omega, max_omega)
-        print("pose ",current_pos)
-        print("point ",self.current_path[actual_lookahead_idx])
-        
-        print("Error",heading_error)
+        rospy.loginfo_throttle(1,"pose {}".format(current_pos))
+        rospy.loginfo_throttle(1,"point {}".format(self.current_path[actual_lookahead_idx]))
+        rospy.loginfo_throttle(1,"Error {}".format(heading_error))
+
         cmd_vel = Twist()
         cmd_vel.linear.x = v
         cmd_vel.angular.z = omega

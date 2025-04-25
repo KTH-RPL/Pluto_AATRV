@@ -6,8 +6,9 @@ import py_trees_ros as ptr
 import rospy
 import actionlib
 from rsequence import RSequence
+from control import NavigationSystem
 from geometry_msgs.msg import PoseArray, PoseStamped
-from client_server.msg import PlutoGoalAction, PlutoGoalGoal  # need to change
+from milestone1.msg import PlutoGoalAction, PlutoGoalGoal  # need to change
 import py_trees.display as display
 
 class M1BehaviourTree(ptr.trees.BehaviourTree):
@@ -19,10 +20,10 @@ class M1BehaviourTree(ptr.trees.BehaviourTree):
 
         b0 = pt.composites.Selector(
             name="Goal fallback",
-            children=[goal_reached(c_goal, multi_goal_client), multi_goal_client]
+            children=[goal_reached(c_goal), multi_goal_client]
         )
 
-        s1 = GoHomeClient(c_goal)
+        s1 = pt.composites.Sequence(name = "Home Sequence", children = [b0,GoHomeClient(c_goal)])
 
         tree = RSequence(name="Main sequence", children=[b0, s1])
         super(M1BehaviourTree, self).__init__(tree)
@@ -31,12 +32,13 @@ class M1BehaviourTree(ptr.trees.BehaviourTree):
         self.setup(timeout=10000)
         while not rospy.is_shutdown():
             self.tick_tock(1)
-            rospy.loginfo("\n" + display.unicode_tree(self.root, show_status=True))
+            # rospy.loginfo("\n" + display.unicode_tree(self.root, show_status=True))
 
 
 class goal_robot_condition():
     def __init__(self):
         self.current_goal = None
+        self.goal_index = 0
         self.goals = []
         self.feedback_status = 0
         self.home_pose = None
@@ -58,6 +60,7 @@ class goal_reached(pt.behaviour.Behaviour):
         super(goal_reached, self).__init__("Goal_reached")
         self.robot_pose = None
         self.c_goal = c_goal
+        
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
 
     def robotPose_callback(self, msg):
@@ -72,7 +75,7 @@ class goal_reached(pt.behaviour.Behaviour):
         current_pose = self.robot_pose.pose.position
         distance = ((current_pose.x - final_goal.x) ** 2 + (current_pose.y - final_goal.y) ** 2) ** 0.5
 
-        if distance < 1.0:
+        if distance < 1.0 and self.c_goal.goal_index == (len(self.c_goal.goals) - 1) :
             rospy.loginfo("[goal_reached] Final goal reached.")
             return pt.common.Status.SUCCESS
 
@@ -83,7 +86,6 @@ class MultiGoalClient(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
         super(MultiGoalClient, self).__init__("SendGoals")
         self.client = actionlib.SimpleActionClient("pluto_goal", PlutoGoalAction)
-        self.goal_index = 0
         self.sent = False
         self.feedback_msg = None
         self.c_goal = c_goal
@@ -100,18 +102,18 @@ class MultiGoalClient(pt.behaviour.Behaviour):
         
 
     def update(self):
-        if self.goal_index >= len(self.c_goal.goals):
+        if self.c_goal.goal_index >= len(self.c_goal.goals):
             return pt.common.Status.SUCCESS
 
         if not self.sent:
             pluto_goal = PlutoGoalGoal()
-            pluto_goal.goal = self.c_goal.goals[self.goal_index]
+            pluto_goal.goal = self.c_goal.goals[self.c_goal.goal_index]
             self.client.send_goal(pluto_goal, feedback_cb=self.feedback_cb)
             self.sent = True
-            rospy.loginfo(f"[MultiGoalClient] Sent goal {self.goal_index + 1}/{len(self.goals)}")
+            rospy.loginfo(f"[MultiGoalClient] Sent goal {self.c_goal.goal_index + 1}/{len(self.c_goal.goals)}")
 
         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
-            self.goal_index += 1
+            self.c_goal.goal_index += 1
             self.sent = False
 
         elif self.client.get_state() in [actionlib.GoalStatus.ABORTED, actionlib.GoalStatus.REJECTED]:
@@ -126,6 +128,7 @@ class GoHomeClient(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
         super(GoHomeClient, self).__init__("GoHomeClient")
         self.client = actionlib.SimpleActionClient("pluto_goal", PlutoGoalAction)
+        self.navsystem = NavigationSystem()
         self.sent = False
         self.c_goal = c_goal
 
@@ -143,6 +146,7 @@ class GoHomeClient(pt.behaviour.Behaviour):
             rospy.loginfo("[GoHomeClient] Sent robot to home position.")
 
         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
+            self.navsystem.stop_robot()
             rospy.loginfo("[GoHomeClient] Reached home position.")
 
             # sent command to stop the robot finally 
@@ -157,5 +161,5 @@ class GoHomeClient(pt.behaviour.Behaviour):
 
 if __name__ == "__main__":
     print(sys.executable)
-    rospy.init_node("Multi-Goal behaviour_tree_controller")
+    rospy.init_node("Multi_Goal_behaviour_tree_controller")
     tree = M1BehaviourTree()
