@@ -20,8 +20,8 @@ class NavigationSystem:
         
         # Control parameters
         self.lookahead_distance = 2.0      
-        self.v_max = 0.6            
-        self.v_min = 0.2            
+        self.v_max = 0.7            
+        self.v_min = 0.4            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
