@@ -19,7 +19,8 @@ class LivePlot:
         self.global_path = None
         self.vel_history = deque(maxlen=100)
         self.error_history = deque(maxlen=100)
-
+        self.robot_poses_x = []
+        self.robot_poses_y = []
         # Choose topics based on --plot_local flag
         robot_pose_topic = '/local_robot_pose' if plot_local else '/robot_pose'
         goal_pose_topic = '/local_goal_pose' if plot_local else '/goal_pose'
@@ -79,12 +80,16 @@ class LivePlot:
         if self.robot_pose:
             x = self.robot_pose.pose.position.x
             y = self.robot_pose.pose.position.y
+            self.robot_poses_x.append(x)
+            self.robot_poses_y.append(y)
             yaw = self.robot_pose.pose.orientation.z
             dx = np.cos(yaw)
             dy = np.sin(yaw)
             self.ax_map.arrow(x, y, dx, dy, head_width=1, color='g', label='Robot')
             all_x.append(x)
             all_y.append(y)
+            self.ax_map.plot(self.robot_poses_x, self.robot_poses_y, "m+")
+
         
         if self.lookahead_pose:
             lx = self.lookahead_pose.pose.position.x
@@ -96,7 +101,6 @@ class LivePlot:
             margin = 5
             self.ax_map.set_xlim(min(all_x) - margin, max(all_x) + margin)
             self.ax_map.set_ylim(min(all_y) - margin, max(all_y) + margin)
-            self.ax_map.plot(all_x, all_y, "m*")
 
         self.ax_map.legend()
 
@@ -157,6 +161,7 @@ if __name__ == '__main__':
     try:
         plotter = LivePlot(plot_local=args.plot_local)
         plotter.run()
+        rospy.spin()
     except KeyboardInterrupt:
         plt.close("all")
         exit()
