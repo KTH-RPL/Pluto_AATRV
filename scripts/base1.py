@@ -40,7 +40,7 @@ class GoalManager:
         self.current_goal = None
         self.nextgoal = True
         self.fp = False
-        rospy.Subscriber("/goal_pose", PoseArray, self.goals_callback)
+        rospy.Subscriber("/goals_array", PoseArray, self.goals_callback)
 
     def goals_callback(self, msg):
         # rospy.loginfo("Received new goal list.")

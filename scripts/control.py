@@ -47,6 +47,7 @@ class NavigationSystem:
 
 
         self.k_angular = 1 
+        self.ky = 1
         self.ik = 0.5
         self.ih = 0.5
         self.dey = 1
@@ -277,7 +278,7 @@ class NavigationSystem:
             else:
                 v = self.v_max
 
-        omega = self.k_angular * heading_error - self.ik * self.iy + self.ih * self.iheading - self.dey * dey
+        omega = self.k_angular * heading_error - self.ky* ey - self.ik * self.iy + self.ih * self.iheading - self.dey * dey
         max_omega = 1.2
         omega = np.clip(omega, -max_omega, max_omega)
         rospy.loginfo_throttle(1,"pose {}".format(current_pos))

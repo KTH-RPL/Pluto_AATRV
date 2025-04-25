@@ -4,7 +4,7 @@ from geometry_msgs.msg import Pose, PoseArray
 
 def publish_goal_list():
     rospy.init_node('goal_publisher')
-    pub = rospy.Publisher('/goal_pose', PoseArray, queue_size=10)
+    pub = rospy.Publisher('/goals_array', PoseArray, queue_size=10)
     rate = rospy.Rate(50)  
 
     
