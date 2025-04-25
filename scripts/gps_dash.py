@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+import warnings
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
@@ -118,9 +121,9 @@ if __name__ == '__main__':
     print("\nDash server starting. Reading data from CSV.")
     print(f"Monitoring CSV file: {CSV_FILE}")
     print(f"Update interval: {UPDATE_INTERVAL_MS / 1000.0} seconds")
-    print("Ensure the 'ros_gps_to_csv.py' script is running and writing to the correct file.")
     print("Open your browser to http://127.0.0.1:8050/")
+    warnings.filterwarnings(action="ignore")
     # Run the Dash app
-    app.run_server(debug=False, host='0.0.0.0', port=8050)
+    app.run(debug=False, host='0.0.0.0', port=8050)
     print("Dash server stopped.")
     

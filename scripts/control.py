@@ -19,18 +19,14 @@ class NavigationSystem:
         
         
         # Control parameters
-        self.lookahead_distance = 1.5
-        self.k_angular = 1       
+        self.lookahead_distance = 1.5      
         self.v_max = 0.6            
         self.v_min = 0.2            
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.0 
         self.min_lookahead = 1.2      
         self.max_lookahead = 1.5 
-        self.k_dey = 1
-        self.k_det = 2
-        self.k_y = 1
-        self.kw = 0.2
+        
         self.prev_omega = 0 
         self.pathgen = False
         self.current_goal = None
@@ -45,6 +41,20 @@ class NavigationSystem:
         self.finished = False
         self.reached = False
         self.fp = True
+        self.prevdy = 0
+        self.dx = 0
+        self.dy = 0
+
+
+        self.k_angular = 1 
+        self.ik = 0.5
+        self.ih = 0.5
+        self.dey = 1
+
+
+        self.iy = 0
+        self.iheading = 0
+
         self.targetid = 0
         rospy.loginfo("Pluto Navigation System initialized")
 
@@ -116,76 +126,76 @@ class NavigationSystem:
 
 
 
-    def run_control1(self, is_last_goal=False):
-        x_robot = self.current_pose.pose.position.x
-        y_robot = self.current_pose.pose.position.y
-        current_pos = (x_robot, y_robot) 
-        while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
-            self.targetid+=1
-        self.current_path = self.current_path[self.targetid:]
-        self.targetid = 0
-        theta_robot = self.current_pose.pose.orientation.z
+    # def run_control1(self, is_last_goal=False):
+    #     x_robot = self.current_pose.pose.position.x
+    #     y_robot = self.current_pose.pose.position.y
+    #     current_pos = (x_robot, y_robot) 
+    #     while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
+    #         self.targetid+=1
+    #     self.current_path = self.current_path[self.targetid:]
+    #     self.targetid = 0
+    #     theta_robot = self.current_pose.pose.orientation.z
 
-        # self.closest_idx = self.find_closest_point(self.current_path, current_pos)
-        # closest_point = self.current_path[self.closest_idx]
+    #     # self.closest_idx = self.find_closest_point(self.current_path, current_pos)
+    #     # closest_point = self.current_path[self.closest_idx]
 
-        # if self.closest_idx + 1 < len(self.current_path):
-        #     side = self.chkside(self.closest_idx, current_pos)
-        #     remid = self.closest_idx + side
-        # else:
-        #     remid = self.closest_idx
+    #     # if self.closest_idx + 1 < len(self.current_path):
+    #     #     side = self.chkside(self.closest_idx, current_pos)
+    #     #     remid = self.closest_idx + side
+    #     # else:
+    #     #     remid = self.closest_idx
 
-        # remaining_path = self.prune_passed_points(self.current_path, remid)
+    #     # remaining_path = self.prune_passed_points(self.current_path, remid)
         
-        x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
-        goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
+    #     x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
+    #     goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
 
 
-        # if goal_distance < self.goal_distance_threshold:
-        #     cmd_vel = Twist()
-        #     cmd_vel.linear.x = 0
-        #     cmd_vel.angular.z = 0
-        #     self.cmd_vel.publish(cmd_vel)
-        #     rospy.loginfo("Goal reached!")
-        #     self.reached = True
-        #     return True  
+    #     # if goal_distance < self.goal_distance_threshold:
+    #     #     cmd_vel = Twist()
+    #     #     cmd_vel.linear.x = 0
+    #     #     cmd_vel.angular.z = 0
+    #     #     self.cmd_vel.publish(cmd_vel)
+    #     #     rospy.loginfo("Goal reached!")
+    #     #     self.reached = True
+    #     #     return True  
 
-        # lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
-        actual_lookahead_idx = self.targetid
-        self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
+    #     # lookahead_point, lookahead_idx = self.find_lookahead_point(remaining_path, current_pos, 0)
+    #     actual_lookahead_idx = self.targetid
+    #     self.publish_look_pose(self.current_path[actual_lookahead_idx][0],self.current_path[actual_lookahead_idx][1])
 
-        heading_ref = self.current_path[actual_lookahead_idx][2]
-        # heading_ref = self.current_headings[actual_lookahead_idx]
-        heading_error = heading_ref - theta_robot
-        if np.abs(heading_error) > np.pi:
-            heading_error = -(heading_error - 2*np.pi)
+    #     heading_ref = self.current_path[actual_lookahead_idx][2]
+    #     # heading_ref = self.current_headings[actual_lookahead_idx]
+    #     heading_error = heading_ref - theta_robot
+    #     if np.abs(heading_error) > np.pi:
+    #         heading_error = -(heading_error - 2*np.pi)
 
-        if self.fp:
-            if np.abs(heading_error) < np.pi / 2:
-                self.fp = False
-                v = self.v_max
-            else:
-                v = 0
-        else:
-            slow_down_dist = self.slow_down_distance
-            if goal_distance < slow_down_dist and is_last_goal == True:
-                v = self.v_min + (self.v_max - self.v_min) * (goal_distance / slow_down_dist)
-            else:
-                v = self.v_max
-        print("pose ",current_pos)
-        print("point ",self.current_path[actual_lookahead_idx])
+    #     if self.fp:
+    #         if np.abs(heading_error) < np.pi / 2:
+    #             self.fp = False
+    #             v = self.v_max
+    #         else:
+    #             v = 0
+    #     else:
+    #         slow_down_dist = self.slow_down_distance
+    #         if goal_distance < slow_down_dist and is_last_goal == True:
+    #             v = self.v_min + (self.v_max - self.v_min) * (goal_distance / slow_down_dist)
+    #         else:
+    #             v = self.v_max
+    #     print("pose ",current_pos)
+    #     print("point ",self.current_path[actual_lookahead_idx])
         
-        print("Error",heading_error)
-        e_y = np.sin(heading_ref) * (x_robot - self.current_path[actual_lookahead_idx][0]) - np.cos(heading_ref) * (y_robot - self.current_path[actual_lookahead_idx][1])
-        de_y = v * heading_error
-        omega = self.k_y * e_y - self.k_angular * heading_error
-        omega = np.clip(omega, -1.2, 1.2)
+    #     print("Error",heading_error)
+    #     e_y = np.sin(heading_ref) * (x_robot - self.current_path[actual_lookahead_idx][0]) - np.cos(heading_ref) * (y_robot - self.current_path[actual_lookahead_idx][1])
+    #     de_y = v * heading_error
+    #     omega = self.k_y * e_y - self.k_angular * heading_error
+    #     omega = np.clip(omega, -1.2, 1.2)
 
-        cmd_vel = Twist()
-        cmd_vel.linear.x = v
-        cmd_vel.angular.z = omega
-        self.cmd_vel.publish(cmd_vel)
-        self.prev_omega = omega
+    #     cmd_vel = Twist()
+    #     cmd_vel.linear.x = v
+    #     cmd_vel.angular.z = omega
+    #     self.cmd_vel.publish(cmd_vel)
+    #     self.prev_omega = omega
 
     def run_control(self, is_last_goal=False): 
 
@@ -228,11 +238,32 @@ class NavigationSystem:
         heading_ref = np.arctan2(self.current_path[actual_lookahead_idx][1] - current_pos[1], self.current_path[actual_lookahead_idx][0] - current_pos[0])
         # self.current_path = self.current_path[actual_lookahead_idx:]
 
-
+        pathorientation = self.current_path[actual_lookahead_idx][2]
+        self.dx = self.current_path[actual_lookahead_idx][0] - current_pos[0]
+        self.dy = self.current_path[actual_lookahead_idx][1] - current_pos[1]
+        ey = -np.sin(pathorientation) * self.dx + np.cos(pathorientation) * self.dy
         heading_error = heading_ref - theta_robot
-        if np.abs(heading_error) > np.pi:
-            heading_error = -(heading_error - 2*np.pi)
+        
 
+        if heading_error > np.pi:
+            heading_error = -(heading_error - 2*np.pi)
+        elif heading_error < np.pi:
+            heading_error = (heading_error + 2*np.pi)
+
+        if np.abs(heading_error) > np.pi/25:
+            self.iheading+=heading_error
+        else:
+            self.iheading*=0.8
+        
+        if np.abs(ey) > 0.5:
+            self.iy+=ey
+        else:
+            self.iy*=0.8
+
+        if self.prevdy!=0:
+            dey = self.dy - self.prevdy
+        
+        
         if self.fp:
             if np.abs(heading_error) < np.pi / 20:
                 self.fp = False
@@ -246,7 +277,7 @@ class NavigationSystem:
             else:
                 v = self.v_max
 
-        omega = self.k_angular * heading_error
+        omega = self.k_angular * heading_error - self.ik * self.iy + self.ih * self.iheading - self.dey * dey
         max_omega = 1.2
         omega = np.clip(omega, -max_omega, max_omega)
         rospy.loginfo_throttle(1,"pose {}".format(current_pos))

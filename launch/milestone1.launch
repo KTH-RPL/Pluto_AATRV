@@ -10,6 +10,9 @@
     <node pkg="milestone1" type="publishers1.py" name="publishers"/>
     
     <node pkg="milestone1" type="send_goal1.py" name="goal_publisher"/>
+
+    <node pkg="milestone1" type="gps_server.py" name="gps_server"/>
+    <node pkg="milestone1" type="gps_dash.py" name="gps_dashboard"/>
     
     <node pkg="rosbag" type="record" name="motion_rosbag" output="screen" args="--all"/>
 
