@@ -41,9 +41,11 @@ class goal_robot_condition():
         self.goal_index = 0
         self.goals = []
         self.feedback_status = 0
+        self.task_completed = False
         self.home_pose = None
+        self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
         rospy.Subscriber("/robot_pose", PoseStamped, self.home_pose_cb)
-        rospy.Subscriber("/goal_pose", PoseArray, self.goals_callback)
+        rospy.Subscriber("/goals_array", PoseArray, self.goals_callback)
 
     def home_pose_cb(self, msg):
         if self.home_pose is None:
@@ -110,6 +112,10 @@ class MultiGoalClient(pt.behaviour.Behaviour):
             pluto_goal.goal = self.c_goal.goals[self.c_goal.goal_index]
             self.client.send_goal(pluto_goal, feedback_cb=self.feedback_cb)
             self.sent = True
+            goal_pose = PoseStamped()
+            goal_pose.header.stamp = rospy.Time.now()
+            goal_pose.pose = self.c_goal.goals[self.c_goal.goal_index]
+            self.c_goal.goal_pose_pub.publish(goal_pose)
             rospy.loginfo(f"[MultiGoalClient] Sent goal {self.c_goal.goal_index + 1}/{len(self.c_goal.goals)}")
 
         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
@@ -123,6 +129,17 @@ class MultiGoalClient(pt.behaviour.Behaviour):
 
         return pt.common.Status.RUNNING
 
+
+class TaskCompletedCondition(pt.behaviour.Behaviour):
+    def __init__(self, c_goal):
+        super(TaskCompletedCondition, self).__init__("TaskCompleted?")
+        self.c_goal = c_goal
+
+    def update(self):
+        if self.c_goal.task_completed:
+            rospy.loginfo("[TaskCompletedCondition] All tasks done. Preventing re-execution.")
+            return pt.common.Status.SUCCESS
+        return pt.common.Status.FAILURE
 
 class GoHomeClient(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
@@ -143,14 +160,17 @@ class GoHomeClient(pt.behaviour.Behaviour):
             pluto_goal.goal = self.c_goal.home_pose
             self.client.send_goal(pluto_goal)
             self.sent = True
+            goal_pose = PoseStamped()
+            goal_pose.header.stamp = rospy.Time.now()
+            goal_pose.pose = self.c_goal.home_pose
+            self.c_goal.goal_pose_pub.publish(goal_pose)
             rospy.loginfo("[GoHomeClient] Sent robot to home position.")
 
         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
-            self.navsystem.stop_robot()
-            rospy.loginfo("[GoHomeClient] Reached home position.")
-
             # sent command to stop the robot finally 
-
+            self.navsystem.stop_robot()
+            self.c_goal.task_completed = True
+            rospy.loginfo("[GoHomeClient] Reached home position.")
             return pt.common.Status.SUCCESS
         elif self.client.get_state() in [actionlib.GoalStatus.ABORTED, actionlib.GoalStatus.REJECTED]:
             rospy.logwarn("[GoHomeClient] Failed to return home.")
