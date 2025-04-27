@@ -26,6 +26,7 @@ if args.verbose:
 # --------------- Global Variables ---------------------
 max_dist_per_point = 1.5
 robot_radius = 1.0
+sim_obs_gl = None
 
 
 # --------------- Generate RRT Path --------------------
@@ -517,12 +518,47 @@ def smooth_path_with_spline(path, map_param, check_node_valid=is_node_valid, ver
     return finalized_path
 
 
-def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=verbose_g):
-    global robot_radius
+def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=verbose_g, add_sim_obstacles=False):
+    global robot_radius, sim_obs_gl
     
     if sim_plan:
         def check_node_valid(node):
             return is_node_valid(node, obstacles = sim_obstacles)
+        
+    elif add_sim_obstacles:
+        if sim_obs_gl is None:
+            sim_obs_gl = []
+            num_obs = 2
+            while len(sim_obs_gl) < num_obs:
+                t = random.uniform(0.3, 0.8)
+                base_x = start[0] + t * (goal[0] - start[0])
+                base_y = start[1] + t * (goal[1] - start[1])
+
+                obs_x = base_x
+                obs_y = base_y
+
+                if len(sim_obs_gl) > 0:
+                    obs_x = base_x + random.uniform(-2.0, 2.0)
+                    obs_y = base_y + random.uniform(-2.0, 2.0)
+
+                obstacle_radius = random.uniform(0.2, 0.5)
+
+                # Check if start or goal is inside obstacle
+                dist_to_start = ((obs_x - start[0])**2 + (obs_y - start[1])**2)**0.5
+                dist_to_goal = ((obs_x - goal[0])**2 + (obs_y - goal[1])**2)**0.5
+
+                if dist_to_start <= obstacle_radius + robot_radius or dist_to_goal <= obstacle_radius + robot_radius:
+                    # Bad obstacle, retry
+                    print("Bad obstacle, retrying obstacle generation")
+                    continue
+
+                sim_obs_gl.append((obs_x, obs_y, obstacle_radius))
+
+        print("ADDING SIMULATED OBSTACLES", sim_obs_gl)
+            
+        def check_node_valid(node):
+            return is_node_valid(node, obstacles = sim_obs_gl)       
+
     else:
         folder = "boundaries"
         folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), folder)
