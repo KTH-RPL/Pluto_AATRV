@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
+
+arguments = sys.argv
+sys.argv = sys.argv[:1]
+
 import rospy
 import actionlib
 from  milestone1.msg import PlutoGoalAction, PlutoGoalResult, PlutoGoalFeedback, PlutoGoalGoal
@@ -8,11 +13,12 @@ from local_planner import execute_planning
 from control import NavigationSystem
 
 class PlutoGoalActionServer:
-    def __init__(self):
+    def __init__(self, sim_obs):
         self.server = actionlib.SimpleActionServer("pluto_goal", PlutoGoalAction, self.execute_cb, False)
         self.server.start()
         self.robot_pose = None
         self.nav_system = NavigationSystem()
+        self.sim_obs = sim_obs
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
         
 
@@ -38,7 +44,7 @@ class PlutoGoalActionServer:
             self.nav_system.targetid = 0
             self.nav_system.fp = True
 
-            self.nav_system.current_path, path_success, _, _ = execute_planning(current_position,(goal.goal.position.x, goal.goal.position.y))
+            self.nav_system.current_path, path_success, _, _ = execute_planning(current_position,(goal.goal.position.x, goal.goal.position.y), add_sim_obstacles=self.sim_obs)
             
             if not path_success:
                 result.success = False
@@ -75,5 +81,14 @@ class PlutoGoalActionServer:
 
 if __name__ == "__main__":
     rospy.init_node('pluto_goal_server')
-    PlutoGoalActionServer()
+    
+    sim_obs = False
+    if '--sim_obs' in arguments:
+        sim_obs = True
+        rospy.loginfo("Simulation obstacles is enabled.")
+    else:
+        rospy.loginfo("Simulation obstacles is disabled.")
+
+    
+    PlutoGoalActionServer(sim_obs)
     rospy.spin()
