@@ -53,19 +53,19 @@ class PlutoGoalActionServer:
                 result.message = "Planning failed for goal"
                 self.server.set_aborted(result)
                 return
-            else:
-                # Publish the path
-                path_msg = Path()
-                path_msg.header.stamp = rospy.Time.now()
-                path_msg.header.frame_id = "map"
+            # else:
+            #     # Publish the path
+            #     path_msg = Path()
+            #     path_msg.header.stamp = rospy.Time.now()
+            #     path_msg.header.frame_id = "map"
                 
-                for point in self.nav_system.current_path:
-                    pose = PoseStamped()
-                    pose.pose.position.x = point[0]
-                    pose.pose.position.y = point[1]
-                    path_msg.poses.append(pose)
+            #     for point in self.nav_system.current_path:
+            #         pose = PoseStamped()
+            #         pose.pose.position.x = point[0]
+            #         pose.pose.position.y = point[1]
+            #         path_msg.poses.append(pose)
                 
-                self.path_pub.publish(path_msg)
+            #     self.path_pub.publish(path_msg)
 
         except Exception as e:
             result.success = False
