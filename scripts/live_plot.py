@@ -24,6 +24,10 @@ class LivePlot:
         self.goal_poses_x = [0]
         self.goal_poses_y = [0]
         self.global_paths = [[0, 0]]
+
+        self.all_x = []
+        self.all_y = []
+
         # Choose topics based on --plot_local flag
         robot_pose_topic = '/local_robot_pose' if plot_local else '/robot_pose'
         goal_pose_topic = '/local_goal_pose' if plot_local else '/goal_pose'
@@ -61,23 +65,20 @@ class LivePlot:
         self.ax_map.set_title('Map View')
         self.ax_map.grid(True)
 
-        # Collect all x and y points to determine limits
-        all_x, all_y = [], []
-
         # Plot global path
         if self.global_path:
             path_x, path_y = zip(*self.global_path)
             self.ax_map.plot(path_x, path_y, 'b--', label='Global Path')
-            all_x.extend(path_x)
-            all_y.extend(path_y)
+            # self.all_x.extend([min(path_x), max(path_x)])
+            # self.all_y.extend([min(path_y), max(path_y)])
 
         # Plot goal
         if self.goal_pose:
             gx = self.goal_pose.pose.position.x
             gy = self.goal_pose.pose.position.y
             self.ax_map.plot(gx, gy, 'ro', label='Goal')
-            all_x.append(gx)
-            all_y.append(gy)
+            self.all_x.append(gx)
+            self.all_y.append(gy)
 
         # Plot robot pose
         if self.robot_pose:
@@ -89,8 +90,8 @@ class LivePlot:
             dx = np.cos(yaw)
             dy = np.sin(yaw)
             self.ax_map.arrow(x, y, dx, dy, head_width=1, color='g', label='Robot')
-            all_x.append(x)
-            all_y.append(y)
+            self.all_x.append(x)
+            self.all_y.append(y)
             self.ax_map.plot(self.robot_poses_x, self.robot_poses_y, "m+")
 
         
@@ -100,10 +101,10 @@ class LivePlot:
             self.ax_map.plot(lx, ly, 'b*', label='lookahead')
 
         # Dynamically adjust axis limits with some margin
-        if all_x and all_y:
+        if self.all_x and self.all_y:
             margin = 5
-            self.ax_map.set_xlim(min(all_x) - margin, max(all_x) + margin)
-            self.ax_map.set_ylim(min(all_y) - margin, max(all_y) + margin)
+            self.ax_map.set_xlim(min(self.all_x) - margin, max(self.all_x) + margin)
+            self.ax_map.set_ylim(min(self.all_y) - margin, max(self.all_y) + margin)
 
         self.ax_map.legend()
 

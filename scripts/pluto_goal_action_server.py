@@ -9,6 +9,7 @@ import rospy
 import actionlib
 from  milestone1.msg import PlutoGoalAction, PlutoGoalResult, PlutoGoalFeedback, PlutoGoalGoal
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
 from local_planner import execute_planning
 from control import NavigationSystem
 
@@ -19,6 +20,7 @@ class PlutoGoalActionServer:
         self.robot_pose = None
         self.nav_system = NavigationSystem()
         self.sim_obs = sim_obs
+        self.path_pub = rospy.Publisher('/planned_path', PoseStamped, queue_size=10)
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
         
 
@@ -51,6 +53,20 @@ class PlutoGoalActionServer:
                 result.message = "Planning failed for goal"
                 self.server.set_aborted(result)
                 return
+            else:
+                # Publish the path
+                path_msg = Path()
+                path_msg.header.stamp = rospy.Time.now()
+                path_msg.header.frame_id = "map"
+                
+                for point in self.nav_system.current_path:
+                    pose = PoseStamped()
+                    pose.pose.position.x = point[0]
+                    pose.pose.position.y = point[1]
+                    path_msg.poses.append(pose)
+                
+                self.path_pub.publish(path_msg)
+
         except Exception as e:
             result.success = False
             result.message = f"Planning failed with error: {str(e)}"
