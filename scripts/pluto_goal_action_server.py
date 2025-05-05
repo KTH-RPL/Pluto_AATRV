@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 
+import sys
+
+arguments = sys.argv
+sys.argv = sys.argv[:1]
+
 import rospy
 import actionlib
 from  milestone1.msg import PlutoGoalAction, PlutoGoalResult, PlutoGoalFeedback, PlutoGoalGoal
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
 from local_planner import execute_planning
 from control import NavigationSystem
 
 class PlutoGoalActionServer:
-    def __init__(self):
+    def __init__(self, sim_obs):
         self.server = actionlib.SimpleActionServer("pluto_goal", PlutoGoalAction, self.execute_cb, False)
         self.server.start()
         self.robot_pose = None
         self.nav_system = NavigationSystem()
+        self.sim_obs = sim_obs
+        self.path_pub = rospy.Publisher('/planned_path', PoseStamped, queue_size=10)
         rospy.Subscriber("/robot_pose", PoseStamped, self.robotPose_callback)
         
 
@@ -38,13 +46,27 @@ class PlutoGoalActionServer:
             self.nav_system.targetid = 0
             self.nav_system.fp = True
 
-            self.nav_system.current_path, path_success, _, _ = execute_planning(current_position,(goal.goal.position.x, goal.goal.position.y))
+            self.nav_system.current_path, path_success, _, _ = execute_planning(current_position,(goal.goal.position.x, goal.goal.position.y), add_sim_obstacles=self.sim_obs)
             
             if not path_success:
                 result.success = False
                 result.message = "Planning failed for goal"
                 self.server.set_aborted(result)
                 return
+            # else:
+            #     # Publish the path
+            #     path_msg = Path()
+            #     path_msg.header.stamp = rospy.Time.now()
+            #     path_msg.header.frame_id = "map"
+                
+            #     for point in self.nav_system.current_path:
+            #         pose = PoseStamped()
+            #         pose.pose.position.x = point[0]
+            #         pose.pose.position.y = point[1]
+            #         path_msg.poses.append(pose)
+                
+            #     self.path_pub.publish(path_msg)
+
         except Exception as e:
             result.success = False
             result.message = f"Planning failed with error: {str(e)}"
@@ -75,5 +97,14 @@ class PlutoGoalActionServer:
 
 if __name__ == "__main__":
     rospy.init_node('pluto_goal_server')
-    PlutoGoalActionServer()
+    
+    sim_obs = False
+    if '--sim_obs' in arguments:
+        sim_obs = True
+        rospy.loginfo("Simulation obstacles is enabled.")
+    else:
+        rospy.loginfo("Simulation obstacles is disabled.")
+
+    
+    PlutoGoalActionServer(sim_obs)
     rospy.spin()
