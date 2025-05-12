@@ -21,7 +21,9 @@ killall xterm
 # Launch the ouster
 xterm -T "Launch Ouster" -geometry 80x15+0+	 -e "roslaunch ouster_ros sensor.launch " & sleep 2
 
-# Launch the realsense camera
-xterm -T "Launch D455" -geometry 80x15+0+350 -e "roslaunch realsense2_camera rs_camera_D455_0.launch" & sleep 2
+# # Launch the realsense camera
+xterm -T "Launch D455" -geometry 80x15+0+350 -e "roslaunch realsense2_camera rs_rgbd.launch" & sleep 2
 
-xterm -T "Perception Rosbag" -geometry 80x15+0+ -e "rosbag record /rsD455_node0/color/image_raw /os_cloud_node/points /rsD455_node0/depth/image_rect_raw /vectornav/Odom /atrv/odom /reach/fix /robot_pose /clock" & sleep 2
+# xterm -T "Perception 1 Rosbag" -geometry 80x15+0+ -e "rosrun milestone1 save_bags.py" & sleep 1
+xterm -T "Perception Rosbag" -geometry 80x15+0+ -e "rosbag record -b 0 /rsD455_node0/color/image_raw /rsD455_node0/depth/image_rect_raw /ouster/points /atrv/odom /atrv/cmd_vel /clock /reach/fix /vectornav/Odom /vectornav/INS" & sleep 1
+# xterm -T "Perception Rosbag" -geometry 80x15+0+ -e "rosrun milestone1 save_bags_color.py" & sleep 1
