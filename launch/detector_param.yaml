@@ -1,0 +1,79 @@
+localization_mode: 1 # 0: pose (default) 1: odom
+
+# ROS Topics
+depth_image_topic: /rsD455_node0/depth/image_rect_raw
+color_image_topic: /rsD455_node0/color/image_raw
+lidar_pointcloud_topic: /ouster/points
+# pose_topic: /mavros/local_position/pose
+odom_topic: /atrv/odom
+
+# Camera Parameters
+depth_intrinsics: [392.18686447169443, 393.05974495542637, 323.7744459749295, 236.8676530416521] # fx,  fy, cx, cy realsense
+color_intrinsics: [387.1445237981549, 387.01248963266613, 324.7310285651963, 238.66995044470548] # intel realsensedepth_scale_factor: 1000 # 1000 for Intel Realsense Camera
+depth_min_value: 0.5
+depth_max_value: 5.0
+depth_filter_margin: 10 # filter
+depth_skip_pixel: 2  # filter
+image_cols: 640
+image_rows: 480
+
+# Sensor Transforms
+body_to_camera: [-0.0022578997337579657, -0.0009717964977189038, 0.9999969787456161, 0.06848378638223135,
+                0.9999625178902136, 0.008356334051211077, 0.0022659426050660346, -0.054542385544686066,
+                -0.00835851083968775, 0.9999646130202771, 0.0009528923083064839, 0.09424585041267339,
+                0.0, 0.0, 0.0, 1.0]
+
+body_to_camera_color: [-0.0005063667779342879, 0.004390860953902336, 0.999990231918679, 0.0682063644957161,
+                      0.9999682435112625, 0.007955484179591332, 0.0004714238775566064, 0.004985284223667225,
+                      -0.007953336513078169, 0.9999587144535296, -0.0043947499084668095, 0.09386005406130697,
+                      0.0, 0.0, 0.0, 1.0]
+
+body_to_lidar: [0.9999135040741837, -0.011166365511073898, -0.006949579221822984, -0.04894521120494695,
+                -0.011356389542502144, -0.9995453006865824, -0.02793249526856565, -0.03126929060348084,
+                -0.006634514801117132, 0.02800900135032654, -0.999585653686922, -0.01755515794222565,
+                0.0, 0.0, 0.0, 1.0]
+
+
+# System
+time_step: 0.033
+
+# DBSCAN Common
+ground_height: 0.1 # height of ground to remove ground points
+roof_height: 2.0 # relative height of roof to remove roof points
+
+# DBSCAN visual param
+voxel_occupied_thresh: 5 # min num of points for a voxel to be occupied in voxel filter
+dbscan_min_points_cluster: 20 # 20: 4.0m range; 30: 3.5m range 40: 3.0m range
+dbscan_search_range_epsilon: 0.05 # searching range radius
+
+# DBSCAN LiDAR param
+lidar_DBSCAN_min_points: 10
+lidar_DBSCAN_epsilon: 0.05
+downsample_threshold: 3500 # threshold for downsampling
+gaussian_downsample_rate: 6
+
+# LiDAR Visual Filtering
+filtering_BBox_IOU_threshold: 0.2
+
+# Tracking and data association
+max_match_range: 0.5 # max match range between time steps in meters
+max_size_diff_range: 0.5 #  in meter
+feature_weight: [3.0, 3.0, 0.1, 0.5, 0.5, 0.05, 0, 0, 0] # weight for feagent 3pos + 3size +  3 pc centroid
+history_size: 100 # size of tracking history. history[0] is current detection
+fix_size_history_threshold: 10 # History threshold (num of frames) to fix box size
+fix_size_dimension_threshold: 0.4 # dimension threshold (size of proportional) to fix box size
+kalman_filter_param: [0.25, 0.01, 0.05, 0.05, 0.04, 0.3, 0.6]
+kalman_filter_averaging_frames: 10
+
+# Classification
+frame_skip: 5 # num of frames skiped when comparing 2 point clouds
+dynamic_velocity_threshold: 0.2
+dynamic_voting_threshold: 0.8
+frames_force_dynamic: 10 # Range of searching dynamic obstacles in box history
+frames_force_dynamic_check_range: 30 # threshold for forcing dynamic obstacles
+dynamic_consistency_threshold: 15 # obstacles being voted as dynamic for continuous k frames are eligible to be classified as dynamic
+
+# Constrain size
+target_constrain_size: true
+target_object_size: [0.5, 0.5, 1.5]
+max_object_size: [3.0, 3.0, 2.0] # filter out objects that are too large
