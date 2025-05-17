@@ -15,7 +15,6 @@ find_package(catkin REQUIRED COMPONENTS
   actionlib_msgs
   actionlib
   message_generation
-  vectornav
 )
 
 # catkin_install_python(PROGRAMS
@@ -120,7 +119,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pluto_aatrv
-CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy  vectornav message_runtime actionlib actionlib_msgs
+CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy message_runtime actionlib actionlib_msgs
 #  DEPENDS system_lib
   
 )
