@@ -121,6 +121,28 @@ class NavigationSystem:
         
         rospy.loginfo("Pluto Navigation System initialized with Preview Control")
 
+    def chkside(self,x,y,id):
+        y1 = self.current_path[id][1]
+        x1 = self.current_path[id][0]
+        y2 = self.current_path[id+1][1]
+        x2 = self.current_path[id+1][0]
+
+        orientation = self.current_path[id][2]
+
+        m = -(x2 - x1) / (y2 - y1) if (y1 - y2) != 0 else np.inf
+        ineq = y - (m*x) - (y1)+(m*x1) 
+
+        if ineq > 0:
+            t = 1 
+            if orientation < 0:
+                t = 0  
+        else:
+            t = 0
+            if orientation < 0:
+                t = 1
+        return t
+
+
     def find_closest_point(self, path, current_pos):
         robot_x, robot_y = current_pos
         theta_robot = self.current_pose.pose.orientation.z
