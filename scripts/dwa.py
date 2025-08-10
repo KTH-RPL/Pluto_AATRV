@@ -29,7 +29,7 @@ class PreviewController:
     def calc_gains(self):
         self.A = np.array([[0, 1, 0], [0, 0, self.v+0.001], [0, 0, 0]])
         self.B = np.array([[0], [0], [1]])
-        self.D = np.array([[0], [-(self.v+0.001)**2], [-(self.v+0.001)]])
+        self.D = np.array([[0], [-1*((self.v+0.001)**2)], [-(self.v+0.001)]])
         A_d = np.eye(3) + self.A * 0.01
         B_d = self.B * 0.01
         D_d = self.D * 0.01
@@ -54,15 +54,16 @@ class PreviewController:
         theta_er = np.arctan2(y_ref - y_r, x_ref - x_r)
 
         ey = np.sin(theta_ref) * (x_r - x_ref) - np.cos(theta_ref) * (y_r - y_ref)
+
         ey = -ey
-        print(f"ey: {ey:.2f}, theta_ref: {theta_ref:.2f}, theta_r: {theta_r:.2f}")
-        etheta = theta_r - theta_ref
+        
+        etheta = - theta_ref +  theta_r
         if etheta > np.pi:
             etheta -= 2 * np.pi
         elif etheta < -np.pi:
             etheta += 2 * np.pi
-        eydot = self.v * etheta
-
+        eydot =  self.v * etheta
+        print(f"ey: {ey:.2f}, theta_ref: {theta_ref:.2f}, theta_r: {theta_r:.2f} ,etheta: {etheta:.2f}, eydot: {eydot:.2f}")
         self.prev_ey = ey
         self.prev_etheta = etheta
         x_state = np.array([ey, eydot, etheta])
@@ -172,12 +173,12 @@ class CarSimulation:
         self.y_path = np.array([p[1] for p in self.path])
         self.curvatures = calculate_curvature(self.x_path, self.y_path)
         
-        self.ref_velocity = 0.6  
+        self.ref_velocity = 1.5  
         self.controller = PreviewController(v=self.ref_velocity, dt=0.1, preview_steps=3)
         self.controller.v = self.ref_velocity
         self.controller.omega = 0
-        self.x = self.x_path[0] +  1
-        self.y = self.y_path[0] - 0
+        self.x = 6
+        self.y = -5
         self.theta = np.pi/1.5
         
         self.history_x = [self.x]
@@ -243,7 +244,7 @@ class CarSimulation:
 
         dwa_v, dwa_omega, obsi, mindist = self.dwa_control()
 
-        if mindist < 2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
+        if mindist < 0:#2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
             self.controller.omega = dwa_omega
             self.controller.v = dwa_v  
             print(f"DWA Control: v={dwa_v:.2f}, omega={dwa_omega:.2f}, mindist={mindist:.2f} (obstacle index: {obsi})")
@@ -323,8 +324,8 @@ class CarSimulation:
 
     def generate_obstacles(self):
         obstacles = []
-        obstacles.append({'x': 1.33, 'y': 4.1, 'vx': -0.2, 'vy':-0.6, 'radius': 1.2})
-        obstacles.append({'x': 0.9, 'y': 5.6, 'vx': -0.3, 'vy':-0.8, 'radius': 0.5})
+        # obstacles.append({'x': 1.33, 'y': 4.1, 'vx': -0.2, 'vy':-0.6, 'radius': 1.2})
+        # obstacles.append({'x': 0.9, 'y': 5.6, 'vx': -0.3, 'vy':-0.8, 'radius': 0.5})
         obstacles.append({'x': 5, 'y': 0, 'vx': -0.0, 'vy':-0.0, 'radius': 1.2})
         obstacles.append({'x': -5, 'y': 0, 'vx': -0.0, 'vy':-0.0, 'radius': 1.2})
         return obstacles
