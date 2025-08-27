@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+
+<launch>
+
+    <include file="$(find realsense2_camera)/launch/rs_rgbd.launch" />
+
+    <node pkg="rosbag" type="record" name="depth"/>
+    
+    <node pkg="milestone1" type="save_bags_color.py" name="color"/>
+
+</launch>

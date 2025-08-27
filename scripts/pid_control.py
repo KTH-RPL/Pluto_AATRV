@@ -211,7 +211,7 @@ class NavigationSystem:
         theta_robot = self.current_pose.pose.orientation.z
         while(self.distancecalc(self.current_path[self.targetid],current_pos) and self.targetid + 1< len(self.current_path)):
             self.targetid+=1
-        while(self.chkside(self.targetid,current_pos,self.current_path[self.targetid][2]) and self.targetid + 1< len(self.current_path)):
+        while(self.targetid + 1< len(self.current_path) and self.chkside(self.targetid,current_pos,self.current_path[self.targetid][2]) ):
             self.targetid+=1
         self.current_path = self.current_path[self.targetid:]
         self.targetid = 0

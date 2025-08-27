@@ -528,7 +528,7 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
     elif add_sim_obstacles:
         if sim_obs_gl is None:
             sim_obs_gl = []
-            num_obs = 2
+            num_obs = 3
             while len(sim_obs_gl) < num_obs:
                 t = random.uniform(0.3, 0.8)
                 base_x = start[0] + t * (goal[0] - start[0])
@@ -541,7 +541,7 @@ def execute_planning(start, goal, sim_plan=False, sim_obstacles=None, verbose=ve
                     obs_x = base_x + random.uniform(-2.0, 2.0)
                     obs_y = base_y + random.uniform(-2.0, 2.0)
 
-                obstacle_radius = random.uniform(0.2, 0.5)
+                obstacle_radius = random.uniform(0.5, 1.5)
 
                 # Check if start or goal is inside obstacle
                 dist_to_start = ((obs_x - start[0])**2 + (obs_y - start[1])**2)**0.5

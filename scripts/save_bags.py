@@ -4,6 +4,7 @@ import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
+import numpy as np
 import os # Used for path manipulation
 
 class ImageSaver:
@@ -18,7 +19,7 @@ class ImageSaver:
         # Get the desired save path from the parameter server or use a default
         # Default saves to the user's home directory
 
-        self.save_path = "/home/sankeerth/catkin_ws/src/Pluto_AATRV/data/depth/"
+        self.save_path = "/home/nuc/perception/depth/"
         # --- End Parameters ---
 
         # Create a CvBridge object
@@ -49,15 +50,13 @@ class ImageSaver:
 
     def image_callback(self, msg):
         # Check if we have already saved an image
-        if self.image_saved:
-            return # Do nothing if already saved
-
+        
         rospy.loginfo("Received an image!")
 
         try:
 
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="32FC1")
-            rospy.loginfo(f"Image encoding: {msg.encoding}, Converted to bgr8")
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+            rospy.loginfo(f"Image encoding: {msg.encoding}, Converted to passthrough")
 
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error converting image: {e}")
@@ -65,9 +64,9 @@ class ImageSaver:
         except Exception as e:
              rospy.logerr(f"General Error converting image: {e}")
              return
-        path = f"{msg.header.seq}_{msg.header.stamp.secs}_{msg.header.stamp.nsecs}_{msg.header.frame_id}.jpg"
+        path = f"{msg.header.seq}_{msg.header.stamp.secs}_{msg.header.stamp.nsecs}_{msg.header.frame_id}"
 
-        success = cv2.imwrite(self.save_path+path, cv_image)
+        np.save(self.save_path + path, cv_image)
 
 
 if __name__ == '__main__':

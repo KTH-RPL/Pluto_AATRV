@@ -85,7 +85,7 @@ class NavigationSystem:
         self.lookahead_distance = 1.0      
         self.v_max = 0.3            
         self.v_min = 0.1       
-        self.max_omega = 0.4     
+        self.max_omega = 0.7     
         self.goal_distance_threshold = 0.2
         self.slow_down_distance = 1.2 
         
@@ -122,7 +122,7 @@ class NavigationSystem:
 
     def distancecalc(self, x1, x2):
         dist = np.sqrt((x1[0] - x2[0])**2 + (x1[1] - x2[1])**2)
-        if dist < 1.2:
+        if dist < 0.5:
             return 1
         else:
             return 0
@@ -158,7 +158,7 @@ class NavigationSystem:
             self.targetid+=1
 
         rospy.loginfo(f"target id {(self.current_path)}")
-        self.current_path = self.current_path[self.targetid:]
+        self.current_path = self.current_path[self.targetid:][:]
         self.current_curvatures = self.current_curvatures[self.targetid:]
         self.targetid = 0
         
@@ -166,7 +166,7 @@ class NavigationSystem:
         y_ref = self.current_path[0][1]
 
 
-        x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][1]
+        x_goal, y_goal = self.current_path[-1][0], self.current_path[-1][0]
         goal_distance = np.sqrt((x_goal - x_robot) ** 2 + (y_goal - y_robot) ** 2)
         
         if self.fp:
@@ -235,7 +235,12 @@ class NavigationSystem:
                 r = np.sqrt((x1 - h)**2 + (y1 - k)**2)
 
                 if r > 1e-6:
-                    curvatures[i] = 1 / r
+                    curvature_magnitude = 1 / r
+                    dx1, dy1 = x2 - x1, y2 - y1  
+                    dx2, dy2 = x3 - x1, y3 - y1  
+                    cross_product = dx1 * dy2 - dy1 * dx2
+                    sign = 1 if cross_product > 0 else -1  
+                    curvatures[i] = sign * curvature_magnitude
                 else:
                     curvatures[i] = 0
 

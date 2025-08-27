@@ -67,6 +67,7 @@ class LivePlot:
 
         # Plot global path
         if self.global_path:
+            rospy.loginfo("Received Path")
             path_x, path_y = zip(*self.global_path)
             self.ax_map.plot(path_x, path_y, 'b--', label='Global Path')
             # self.all_x.extend([min(path_x), max(path_x)])

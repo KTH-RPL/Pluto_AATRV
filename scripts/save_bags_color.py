@@ -5,6 +5,8 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import os # Used for path manipulation
+import json
+from rospy_message_converter import json_message_converter
 
 class ImageSaver:
     def __init__(self):
@@ -18,7 +20,7 @@ class ImageSaver:
         # Get the desired save path from the parameter server or use a default
         # Default saves to the user's home directory
 
-        self.save_path = "/home/sankeerth/catkin_ws/src/Pluto_AATRV/data/color/"
+        self.save_path = "/home/nuc/perception/color/"
         # --- End Parameters ---
 
         # Create a CvBridge object
@@ -31,6 +33,7 @@ class ImageSaver:
         save_dir = os.path.dirname(self.save_path)
         if save_dir and not os.path.exists(save_dir):
             try:
+                os.removedirs(save_dir)
                 os.makedirs(save_dir)
                 rospy.loginfo(f"Created directory: {save_dir}")
             except OSError as e:
