@@ -36,5 +36,5 @@
     </node>
 
     # launch rviz with a specific config file
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/rviz.rviz" output="screen"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" output="screen"/>
 </launch>

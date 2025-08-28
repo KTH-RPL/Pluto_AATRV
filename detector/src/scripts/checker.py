@@ -7,84 +7,78 @@ import threading
 class ObstacleChecker:
     """
     A utility class to check for collisions with dynamically detected obstacles.
-
-    This class subscribes to a MarkerArray topic representing obstacles as flat
-    rectangles (CUBE markers) and provides a method to check if a given 2D
-    point is in collision. It is designed to be thread-safe.
+    This version checks a point against a list of 2D polygons.
     """
     def __init__(self, obstacle_topic="/detected_obstacles"):
-        """
-        Initializes the ObstacleChecker.
-        
-        Args:
-            obstacle_topic (str): The ROS topic publishing obstacle markers.
-        """
-        self.obstacles = []
-        self.lock = threading.Lock()  # To ensure thread-safe access to the obstacles list
+        self.obstacles = [] # Will be a list of polygons (each a list of points)
+        self.lock = threading.Lock()
 
-        # Subscribe to the obstacle topic
         self.obstacle_subscriber = rospy.Subscriber(
             obstacle_topic,
             MarkerArray,
             self._obstacle_callback,
             queue_size=1
         )
-        
-        rospy.loginfo(f"ObstacleChecker initialized. Subscribing to {obstacle_topic}")
+        rospy.loginfo(f"ObstacleChecker (Polygon version) initialized. Subscribing to {obstacle_topic}")
 
     def _obstacle_callback(self, msg):
         """
-        Internal callback to process incoming MarkerArray messages.
-        It updates the internal list of obstacles with rectangular bounds.
+        Internal callback to process incoming MarkerArray messages,
+        extracting polygon footprints from LINE_STRIP markers.
         """
         new_obstacles = []
         for marker in msg.markers:
-            # *** MODIFICATION: Look for CUBE markers representing rectangular obstacles ***
-            if marker.action == marker.ADD and marker.type == marker.CUBE:
-                center_x = marker.pose.position.x
-                center_y = marker.pose.position.y
-                width = marker.scale.x
-                height = marker.scale.y
-                
-                half_w = width / 2.0
-                half_h = height / 2.0
-
-                # Store the min/max coordinates for efficient checking
-                obstacle_data = {
-                    'xmin': center_x - half_w,
-                    'xmax': center_x + half_w,
-                    'ymin': center_y - half_h,
-                    'ymax': center_y + half_h
-                }
-                new_obstacles.append(obstacle_data)
+            # *** MODIFICATION: Look for LINE_STRIP markers ***
+            if marker.action == marker.ADD and marker.type == marker.LINE_STRIP and len(marker.points) > 2:
+                # Extract the (x, y) coordinates of the polygon vertices
+                # The last point is a duplicate to close the loop, so we skip it.
+                polygon = [(p.x, p.y) for p in marker.points[:-1]]
+                new_obstacles.append(polygon)
         
-        # Atomically update the list of obstacles
         with self.lock:
             self.obstacles = new_obstacles
 
-    def is_safe(self, x, y):
+    def _point_in_polygon(self, x, y, polygon):
         """
-        Checks if a point (x, y) is inside any of the detected rectangular obstacles.
-        This is the main function to be called by a planner.
-
+        Checks if a point (x, y) is inside a polygon using the Ray Casting algorithm.
+        
         Args:
-            x (float): The x-coordinate of the point in the robot's frame.
-            y (float): The y-coordinate of the point in the robot's frame.
+            x (float): x-coordinate of the point.
+            y (float): y-coordinate of the point.
+            polygon (list of tuples): A list of (x, y) vertices of the polygon.
 
         Returns:
-            bool: True if the point is safe (not in an obstacle), False otherwise.
+            bool: True if the point is inside the polygon, False otherwise.
         """
-        # Create a local copy of the list to check against, to minimize lock time
+        n = len(polygon)
+        inside = False
+        p1x, p1y = polygon[0]
+        for i in range(n + 1):
+            p2x, p2y = polygon[i % n]
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+        return inside
+
+    def is_safe(self, x, y):
+        """
+        Checks if a point (x, y) is inside any of the detected polygonal obstacles.
+        """
         with self.lock:
             current_obstacles = list(self.obstacles)
 
-        for obs in current_obstacles:
-            # *** MODIFICATION: Perform an axis-aligned bounding box (AABB) check ***
-            # This is a very efficient check for point-in-rectangle collision.
-            if obs['xmin'] <= x <= obs['xmax'] and obs['ymin'] <= y <= obs['ymax']:
+        for obs_polygon in current_obstacles:
+            # *** MODIFICATION: Perform point-in-polygon check ***
+            if self._point_in_polygon(x, y, obs_polygon):
                 return False  # Collision detected
 
         return True  # Point is safe
+
 
 # ==============================================================================
 # Example Usage: A simple node that demonstrates how to use the ObstacleChecker
