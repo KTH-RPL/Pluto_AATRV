@@ -8,9 +8,9 @@ class ObstacleChecker:
     """
     A utility class to check for collisions with dynamically detected obstacles.
 
-    This class subscribes to a MarkerArray topic representing obstacles as circles
-    and provides a simple method to check if a given 2D point is in collision.
-    It is designed to be thread-safe for use in a planner.
+    This class subscribes to a MarkerArray topic representing obstacles as flat
+    rectangles (CUBE markers) and provides a method to check if a given 2D
+    point is in collision. It is designed to be thread-safe.
     """
     def __init__(self, obstacle_topic="/detected_obstacles"):
         """
@@ -35,19 +35,26 @@ class ObstacleChecker:
     def _obstacle_callback(self, msg):
         """
         Internal callback to process incoming MarkerArray messages.
-        It updates the internal list of obstacles.
+        It updates the internal list of obstacles with rectangular bounds.
         """
         new_obstacles = []
         for marker in msg.markers:
-            # We are interested in the CYLINDER markers that represent obstacles
-            if marker.action == marker.ADD and marker.type == marker.CYLINDER:
-                # The marker's scale.x is the diameter of the circle
-                radius = marker.scale.x / 2.0
+            # *** MODIFICATION: Look for CUBE markers representing rectangular obstacles ***
+            if marker.action == marker.ADD and marker.type == marker.CUBE:
+                center_x = marker.pose.position.x
+                center_y = marker.pose.position.y
+                width = marker.scale.x
+                height = marker.scale.y
                 
+                half_w = width / 2.0
+                half_h = height / 2.0
+
+                # Store the min/max coordinates for efficient checking
                 obstacle_data = {
-                    'x': marker.pose.position.x,
-                    'y': marker.pose.position.y,
-                    'radius_sq': radius * radius  # Store squared radius for efficient checking
+                    'xmin': center_x - half_w,
+                    'xmax': center_x + half_w,
+                    'ymin': center_y - half_h,
+                    'ymax': center_y + half_h
                 }
                 new_obstacles.append(obstacle_data)
         
@@ -57,7 +64,7 @@ class ObstacleChecker:
 
     def is_safe(self, x, y):
         """
-        Checks if a point (x, y) is inside any of the detected obstacles.
+        Checks if a point (x, y) is inside any of the detected rectangular obstacles.
         This is the main function to be called by a planner.
 
         Args:
@@ -72,11 +79,9 @@ class ObstacleChecker:
             current_obstacles = list(self.obstacles)
 
         for obs in current_obstacles:
-            # Calculate the squared distance from the point to the obstacle's center
-            dist_sq = (x - obs['x'])**2 + (y - obs['y'])**2
-            
-            # Compare with the squared radius. This avoids using a costly sqrt() call.
-            if dist_sq <= obs['radius_sq']:
+            # *** MODIFICATION: Perform an axis-aligned bounding box (AABB) check ***
+            # This is a very efficient check for point-in-rectangle collision.
+            if obs['xmin'] <= x <= obs['xmax'] and obs['ymin'] <= y <= obs['ymax']:
                 return False  # Collision detected
 
         return True  # Point is safe
@@ -92,7 +97,6 @@ def main():
     rospy.init_node('obstacle_checker_example', anonymous=True)
 
     # 1. Instantiate the checker
-    # This will automatically start subscribing to the obstacle topic in the background.
     collision_checker = ObstacleChecker()
 
     # Give it a moment to receive the first message from the detector
@@ -102,11 +106,8 @@ def main():
 
     while not rospy.is_shutdown():
         # --- Example points to check (in base_link frame) ---
-        # A point right in front of the robot
         point_in_front = (1.0, 0.0) 
-        # A point to the left
         point_on_left = (0.5, 1.0)
-        # A point very close to the robot's origin
         point_at_origin = (0.0, 0.0)
 
         # 2. Use the is_safe method for your planning logic

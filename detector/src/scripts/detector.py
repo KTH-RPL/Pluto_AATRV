@@ -197,7 +197,7 @@ class UvDetectorNodeROS1:
         depth_topic = rospy.get_param('~depth_topic', '/rsD455_node0/depth/image_rect_raw')
         obstacle_topic = rospy.get_param('~obstacle_topic', '/detected_obstacles')
         self.output_frame_id = rospy.get_param('~output_frame_id', 'base_link')
-        self.safety_buffer = rospy.get_param('~safety_buffer', 0.1)  # Extra radius in meters
+        self.safety_buffer = rospy.get_param('~safety_buffer', 0.1)  # Extra size in meters for each dimension
 
         # --- Load detector configuration from parameters ---
         # This makes the node highly configurable via launch files
@@ -228,7 +228,7 @@ class UvDetectorNodeROS1:
 
     def depth_callback(self, msg):
         """Main callback to process incoming depth images."""
-        try:
+        try
             # Use cv_bridge to convert ROS Image message to OpenCV image
             depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
         except CvBridgeError as e:
@@ -251,43 +251,37 @@ class UvDetectorNodeROS1:
 
 
     def create_obstacle_markers(self, boxes, header):
-        """Converts a list of 3D boxes into a MarkerArray of 2D circles (flat cylinders)."""
+        """Converts a list of 3D boxes into a MarkerArray of 2D flat rectangles (CUBES)."""
         marker_array = MarkerArray()
         
         # This special marker deletes all old markers in this namespace.
-        # This ensures that obstacles disappear from RViz when they are no longer detected.
         delete_marker = Marker()
         delete_marker.header.frame_id = self.output_frame_id
         delete_marker.action = Marker.DELETEALL
         marker_array.markers.append(delete_marker)
 
         for i, box in enumerate(boxes):
-            # Center of the circle is the 2D projection of the box's center
-            center_x = box['x']
-            center_y = box['y']
-
-            # Radius is based on the diagonal of the box's 2D footprint, plus a safety buffer.
-            # This creates a circle that fully encloses the detected obstacle's base.
-            radius = 0.5 * math.sqrt(box['x_width']**2 + box['y_width']**2) + self.safety_buffer
-
             marker = Marker()
             marker.header = header
             marker.header.frame_id = self.output_frame_id # Ensure correct frame
             marker.ns = "uv_obstacles"
             marker.id = i
-            marker.type = Marker.CYLINDER  # A flat cylinder appears as a circle in RViz
+            # *** MODIFICATION: Use CUBE instead of CYLINDER for a rectangular shape ***
+            marker.type = Marker.CUBE
             marker.action = Marker.ADD
 
-            # Position
-            marker.pose.position.x = center_x
-            marker.pose.position.y = center_y
-            marker.pose.position.z = 0.05  # Place circle slightly above the ground plane
-            marker.pose.orientation.w = 1.0 # No rotation needed
+            # Position is the center of the box
+            marker.pose.position.x = box['x']
+            marker.pose.position.y = box['y']
+            marker.pose.position.z = 0.05  # Place rectangle slightly above the ground plane
+            # The boxes are axis-aligned in the output frame, so no rotation is needed.
+            marker.pose.orientation.w = 1.0
 
-            # Scale (diameter for x/y, height for z)
-            marker.scale.x = radius * 2.0
-            marker.scale.y = radius * 2.0
-            marker.scale.z = 0.1  # A small height makes it a flat circle
+            # *** MODIFICATION: Scale is now the width/height of the box + safety buffer ***
+            # This provides a much tighter fit than a circle for long objects.
+            marker.scale.x = box['x_width'] + self.safety_buffer
+            marker.scale.y = box['y_width'] + self.safety_buffer
+            marker.scale.z = 0.1  # A small height makes it a flat rectangle
 
             # Color (e.g., semi-transparent orange)
             marker.color.r = 1.0
