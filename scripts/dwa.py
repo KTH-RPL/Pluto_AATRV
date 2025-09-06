@@ -244,7 +244,7 @@ class CarSimulation:
 
         dwa_v, dwa_omega, obsi, mindist = self.dwa_control()
 
-        if mindist < 0:#2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
+        if mindist < 2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
             self.controller.omega = dwa_omega
             self.controller.v = dwa_v  
             print(f"DWA Control: v={dwa_v:.2f}, omega={dwa_omega:.2f}, mindist={mindist:.2f} (obstacle index: {obsi})")
@@ -339,10 +339,9 @@ class CarSimulation:
     def chkside(self,x,y,id,orientation):
         x1 = self.x_path[id]
         y1 = self.y_path[id]
-        x2 = self.x_path[id + 1]
-        y2 = self.y_path[id + 1]
+        
 
-        m = -(x2 - x1) / (y2 - y1) if (y1 - y2) != 0 else np.inf
+        m = -1/np.tan(orientation)
         ineq = y - (m*x) - (y1)+(m*x1) 
 
         if ineq > 0:
