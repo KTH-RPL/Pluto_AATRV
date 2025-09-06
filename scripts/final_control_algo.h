@@ -28,7 +28,7 @@ struct DWAResult {
 
 class PreviewController {
 public:
-    PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 20);
+    PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 5);
     void initialize_dwa_controller();
     double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
     geometry_msgs::PoseStamped current_pose;
@@ -74,7 +74,6 @@ private:
     double dt_;
     double preview_dt_;
     int preview_steps_;
-    double etheta_threshold_;
 
     double cross_track_error_;
     double heading_error_;

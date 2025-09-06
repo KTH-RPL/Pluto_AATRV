@@ -12,40 +12,61 @@
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
-      prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0)
+      prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0) // Check on adding NodeHandle here 
 {
     robot_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/atrv/cmd_vel", 10);
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
-
+    // Params to modify for different scenarios
+    // Reference optimal velocity for robot
     nh_.param("preview_controller/linear_velocity", linear_velocity_, 1.0);
-    nh_.param("preview_controller/preview_dt", dt_, 0.1);
-    nh_.param("preview_controller/preview_steps", preview_steps_, 5);
-    nh_.param("preview_controller/etheta_threshold", etheta_threshold_, 0.2);
 
+    // Frequency of the controller
+    nh_.param("preview_controller/preview_dt", dt_, 0.1);
+
+    // Control params 
     nh_.param("preview_controller/max_vel", max_vel_, 1.0);
     nh_.param("preview_controller/max_omega", max_omega_, 0.2);
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
     nh_.param("preview_controller/max_domega", max_domega_, 0.2);
+
+    // Measure robot_radius and set
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);
     nh_.param("preview_controller/lookahead_distance", lookahead_distance_, 1.0);
+
+    // Max cross track error so robot moves towards the target first
     nh_.param("preview_controller/max_cte", max_cte, 1.5);
+
+    // Thresh to adjust orientation before moving to target
     nh_.param("preview_controller/max_lookahead_heading_error", max_lookahead_heading_error, 0.2);
+
+    // For optimaizing the cost function, try diff params 
     nh_.param("preview_controller/preview_loop_thresh", preview_loop_thresh, 1e-6);
+
+    // P gain to adjust high CTE
     nh_.param("preview_controller/kp_adjust_cte", kp_adjust_cte, 2.0);
+
+    // Params for collision avoidance
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
+
+    // Thresh to stop the robot when close to the goal
     nh_.param("preview_controller/goal_distance_threshold", goal_distance_threshold_, 0.2);
 
+    // Q matrix for the preview controller
     std::vector<double> default_Q = {5.0, 6.0, 5.0};
     nh_.param("preview_controller/Q_params", Q_params_, default_Q);
     
+    // R matrix for the preview controller
     nh_.param("preview_controller/R", R_param_, 1.0);
 
+    // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
     omega_acc_bound = omega_acc_ * dt_;
 }
 
+
+// Need to call this after setting the current_path from execute planner, also need to set max_path_points 
 void PreviewController::initialize_dwa_controller() {
     dwa_controller_ = dwa_controller(current_path, targetid, max_path_points);
 }
@@ -54,6 +75,8 @@ double PreviewController::distancecalc(double x1, double y1, double x2, double y
     return std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
+
+// Only changes when velocity changes, can put condition on prev vel diff to reduce computation time
 void PreviewController::calcGains() {
     A_ << 0, 1, 0,
           0, 0, v_,
@@ -77,11 +100,13 @@ void PreviewController::calcGains() {
     Q_ = Q_ * dt_;
     R_ = R_ / dt_;
 
+
+    // Reduce iterations if needed
     Eigen::Matrix3d P = Q_;
     for (int i = 0; i < 100; ++i) {
         Eigen::Matrix3d P_next = A_.transpose() * P * A_ -
             (A_.transpose() * P * B_) * (R_ + B_.transpose() * P * B_).inverse() * (B_.transpose() * P * A_) + Q_;
-        if ((P_next - P).norm() < 1e-6) break;
+        if ((P_next - P).norm() < preview_loop_thresh) break;
         P = P_next;
     }
 
@@ -104,6 +129,7 @@ void PreviewController::calcGains() {
     Kf_ = (R_ + B_.transpose() * P * B_).inverse() * B_.transpose() * Kf_term;
 }
 
+// Depends on path size, either calculate all curvature at once, for now called for each point
 double PreviewController::calculate_curvature(std::vector<double> x, std::vector<double> y) {
     double curvature = 0.0;
     if (x.size() < 3) return curvature;
@@ -141,6 +167,7 @@ void PreviewController::lookahead_heading_error(double x_ref, double y_ref, doub
     }
 }
 
+// Need to check if called only once every iteration, else can shift more than the acc_bound
 void PreviewController::boundvel(double ref_vel) {
     if (std::abs(ref_vel - v_) < vel_acc_bound) {
         v_ = ref_vel;
@@ -166,20 +193,29 @@ void PreviewController::boundomega(double ref_omega) {
     omega_ = std::max(std::min(omega_, max_omega_), -max_omega_);
 }
 
+
+// Changed from NavigationSystem to PreviewController, main control loop
 bool PreviewController::run_control(bool is_last_goal) {
     bool bounded = false;
     robot_x = current_pose.pose.position.x;
     robot_y = current_pose.pose.position.y;
     robot_theta = current_pose.pose.orientation.z;
 
-    while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
-        targetid++;
-    }
+
+    // Changed until point is only in front of robot
     while ((targetid + 1 < max_path_points) && (chkside(current_path[targetid].theta))) {
         targetid++;
     }
+
+    // Gets the lookahead point
+    while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
+        targetid++;
+    }
+    
+
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 
+    // If CTE high, focus on moving to lookahead
     if (std::abs(cross_track_error_) > max_cte) {
         lookahead_heading_error(current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
         if (lookahead_heading_error_ > max_lookahead_heading_error) {
@@ -192,18 +228,28 @@ bool PreviewController::run_control(bool is_last_goal) {
         }
     }
 
+    // Call DWA controller
     DWAResult dwa_result = dwa_controller_.dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
 
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
     double goal_distance = distancecalc(robot_x, robot_y, x_goal, y_goal);
 
+
+    // Here the obstacle calculation must be done correctly based on perception result
     double obstacle_radius = 0.5;
+
+    // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
     if (dwa_result.obsi_mindist < collision_robot_coeff * robot_radius_ + collision_obstacle_coeff * obstacle_radius) {
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
-    } else {
+    } 
+    
+    else 
+    // Call preview Controller
+    {
         if (!bounded)
+            // Increase vel to the target vel
             boundvel(linear_velocity_);
         heading_error_ = robot_theta - current_path[targetid].theta;
         if (heading_error_ > M_PI) {
@@ -214,11 +260,14 @@ bool PreviewController::run_control(bool is_last_goal) {
         std::vector<double> x_vals = {current_path[targetid].x};
         std::vector<double> y_vals = {current_path[targetid].y};
 
+        // Calls to compute the omega
         compute_control(cross_track_error_, heading_error_, path_curvature_);
     }
 
+    // Publish the cmd_vel
     publish_cmd_vel();
 
+    // Publish the lookahead point
     geometry_msgs::PoseStamped look_pose;
     look_pose.pose.position.x = current_path[targetid].x;
     look_pose.pose.position.y = current_path[targetid].y;
@@ -226,6 +275,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     look_pose.pose.orientation.z = current_path[targetid].theta;
     publish_look_pose(look_pose);
 
+    // Check if goal is reached
     if (goal_distance < goal_distance_threshold_) {
         stop_robot();
         ROS_INFO("Goal reached!");
@@ -235,6 +285,8 @@ bool PreviewController::run_control(bool is_last_goal) {
     return false;
 }
 
+
+// Checks if robot in front of point
 bool PreviewController::chkside(double path_theta) {
     if (targetid + 1 >= max_path_points) return false;
     double x1 = current_path[targetid].x;
@@ -247,6 +299,7 @@ bool PreviewController::chkside(double path_theta) {
     bool t = false;
     if (ineq > 0) {
         t = true;
+        // Condition changed based on orientation sign
         if (path_theta < 0) {
             t = false;
         }
@@ -259,11 +312,10 @@ bool PreviewController::chkside(double path_theta) {
     return t;
 }
 
+// Compute omega from Preview Controller
 void PreviewController::compute_control(double cross_track_error, double heading_error, double path_curvature) {
     x_state << cross_track_error, v_ * std::sin(heading_error), heading_error;
-    Eigen::Vector3d x_ref(0, 0, 0);
-    Eigen::Vector3d error = x_ref - x_state;
-    Eigen::Vector3d control = Kf_ * error;
+
     std::vector<double> preview_curv(preview_steps_ + 1);
     std::vector<double> x_vals, y_vals;
     for (int i = 0; i <= preview_steps_; ++i) {
@@ -274,6 +326,8 @@ void PreviewController::compute_control(double cross_track_error, double heading
             y_vals.push_back(current_path[targetid + 2].y);
         }
         path_curvature_ = calculate_curvature(x_vals, y_vals);
+        x_vals.clear();
+        y_vals.clear();
         preview_curv[i] = path_curvature;
     }
 
@@ -285,6 +339,7 @@ void PreviewController::compute_control(double cross_track_error, double heading
     std::cout << " Theta error: " << heading_error << ", Omega: " << omega_ << ", ey " << cross_track_error << std::endl;
 }
 
+// Stop the robot
 void PreviewController::stop_robot() {
     geometry_msgs::Twist cmd_vel;
     cmd_vel.linear.x = 0.0;
@@ -292,9 +347,11 @@ void PreviewController::stop_robot() {
     robot_vel_pub_.publish(cmd_vel);
 }
 
+// Publish the cmd_vel
 void PreviewController::publish_cmd_vel() {
     geometry_msgs::Twist cmd_vel;
     cmd_vel.linear.x = v_;
+    // Bound the omega
     if (omega_ < -max_omega_) {
         omega_ = -max_omega_;
     } else if (omega_ > max_omega_) {
@@ -304,9 +361,10 @@ void PreviewController::publish_cmd_vel() {
     robot_vel_pub_.publish(cmd_vel);
 }
 
+// Publish the lookahead point
 void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) {
     look_pose.header.stamp = ros::Time::now();
-    look_pose.header.frame_id = "map";
+    look_pose.header.frame_id = "map"; //Change the frame if needed
     lookahead_point_pub_.publish(look_pose);
 }
 
@@ -314,16 +372,22 @@ void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) 
 dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points)
     : current_path_(&path), target_idx_(&target_idx), max_path_points_(&max_points),
       min_obs_num(0), min_obs_dist(std::numeric_limits<double>::infinity()) {
+
+    // Future prediction horizion, not too big as most costs measured with last point
     nh_.param("dwa_controller/predict_time", predict_time_, 2.0);
+
+    // Coefficient for cost functions
     nh_.param("dwa_controller/path_distance_bias", path_distance_bias_, 20.0);
     nh_.param("dwa_controller/goal_distance_bias", goal_distance_bias_, 0.5);
     nh_.param("dwa_controller/occdist_scale", occdist_scale_, 10.0);
     nh_.param("dwa_controller/speed_ref_bias", speed_ref_bias_, 0.005);
     nh_.param("dwa_controller/away_bias", away_bias_, 20.0);
 
+    // Number of samples for velocity and omega between dynamic window
     nh_.param("dwa_controller/vx_samples", vx_samples_, 3);
     nh_.param("dwa_controller/omega_samples", omega_samples_, 5);
-
+    
+    // Same params above
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
@@ -336,6 +400,8 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
 }
 
+
+// bounds and calculates window within acc
 std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) {
     std::vector<double> Vs = {min_speed_, max_speed_, -max_omega_, max_omega_};
     std::vector<double> Vd = {v - vel_acc_ * dt_dwa_, v + vel_acc_ * dt_dwa_, omega - omega_acc_ * dt_dwa_, omega + omega_acc_ * dt_dwa_};
@@ -343,6 +409,7 @@ std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) 
     return vr;
 }
 
+// Traj predicted for time step dt_dwa within predict time, dt_dwa can be different from dt_ in Preview controller
 std::vector<std::vector<double>> dwa_controller::calc_trajectory(double x, double y, double theta, double v, double omega) {
     std::vector<std::vector<double>> traj;
     traj.push_back({x, y, theta});
@@ -357,10 +424,12 @@ std::vector<std::vector<double>> dwa_controller::calc_trajectory(double x, doubl
     return traj;
 }
 
+// CTE
 double dwa_controller::cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref) {
     return (y_ref - y_r) * std::cos(theta_ref) - (x_ref - x_r) * std::sin(theta_ref);
 }
 
+// CTE cost
 double dwa_controller::calc_path_cost() {
     if (traj_list_.empty() || !current_path_ || !max_path_points_ || !target_idx_ || *max_path_points_ == 0)
         return 0.0;
@@ -379,6 +448,7 @@ double dwa_controller::calc_path_cost() {
     return 0.0;
 }
 
+// Lookahead cost, more if farther so robot doesn't indefinitely go out of path because of obstacle, increase predict time if needed
 double dwa_controller::calc_lookahead_cost() {
     if (traj_list_.empty() || !current_path_ || !target_idx_ || !max_path_points_)
         return 0.0;
@@ -396,10 +466,12 @@ double dwa_controller::calc_lookahead_cost() {
     return 0.0;
 }
 
+// Tries to maintain required vel
 double dwa_controller::calc_speed_ref_cost(double v) {
     return std::abs(v - ref_velocity_);
 }
 
+// Calculate cost upon each time step and adds
 double dwa_controller::calc_obstacle_cost() {
     if (traj_list_.empty())
         return 0.0;
@@ -431,6 +503,7 @@ double dwa_controller::calc_obstacle_cost() {
     return 500.0 * obs_cost;
 }
 
+// Experimental, can remove if not needed, tries to move away from obstacle if getting chased, increase predict time again if needed
 double dwa_controller::calc_away_from_obstacle_cost(int obs_idx, double v, double omega) {
     if (traj_list_.empty() || obs_idx >= obstacles.size())
         return 0.0;
@@ -450,6 +523,7 @@ double dwa_controller::calc_away_from_obstacle_cost(int obs_idx, double v, doubl
     return 50.0 / ((std::abs(theta_er) + 1.0) * dist + 0.01);
 }
 
+// Main cost calc
 DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, double v, double omega) {
     std::vector<double> dw = calc_dynamic_window(v, omega);
     double min_cost = std::numeric_limits<double>::infinity();
