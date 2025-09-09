@@ -1,0 +1,43 @@
+<launch>
+    <!-- Node name and package -->
+    <!-- launch d455 camera node roslaunch realsense2_camera rs_rgbd.launch -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>
+
+    <node name="detector" pkg="detector" type="detector.py" output="screen">
+
+        <!-- Topic and Frame Parameters -->
+        <param name="depth_topic"           value="/rsD455_node0/depth/image_rect_raw"/>
+        <param name="obstacle_topic"        value="/detected_obstacles"/>
+        <param name="output_frame_id"       value="base_link"/>
+
+        <!-- Algorithm Tuning Parameters -->
+        <param name="safety_buffer"         value="0.1"/>
+        <param name="depth_scale_factor"    value="1000.0"/>
+
+        <!-- UV Detector specific parameters -->
+        <rosparam param="uv_detector">
+            row_downsample: 4
+            col_scale: 0.5
+            min_dist: 0.1
+            max_dist: 8.0
+            threshold_point: 3
+            threshold_line: 2
+            min_length_line: 6
+        </rosparam>
+
+        <!-- REQUIRED: Camera Intrinsics and Extrinsics -->
+        <!-- These must be provided for the node to run -->
+        <rosparam param="depth_intrinsics">[392.1868, 393.0597, 323.7744, 236.8676]</rosparam>
+        
+        <rosparam param="body_to_camera_depth">[
+            -0.002257, -0.000971,  0.999996,  0.068483,
+             0.999962,  0.008356,  0.002265, -0.054542,
+            -0.008358,  0.999964,  0.000952,  0.094245,
+             0.0,       0.0,       0.0,       1.0
+        ]</rosparam>
+
+    </node>
+
+    # launch rviz with a specific config file
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" output="screen"/>
+</launch>
