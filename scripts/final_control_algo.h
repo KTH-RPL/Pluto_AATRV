@@ -7,6 +7,8 @@
 #include <yaml-cpp/yaml.h>
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <nav_msgs/Path.h>
 #include <limits>
 
 struct Waypoint {
@@ -39,6 +41,9 @@ class PreviewController {
     public:
         PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 5);
         void initialize_dwa_controller();
+        void generate_snake_path(double start_x, double start_y, double start_theta);
+        void initialize_standalone_operation();
+        void run_standalone_control();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
         geometry_msgs::PoseStamped current_pose;
         std::vector<Waypoint> current_path;
@@ -46,6 +51,9 @@ class PreviewController {
         dwa_controller* dwa_controller_ptr;
         ros::Publisher robot_vel_pub_;
         ros::Publisher lookahead_point_pub_;
+        ros::Publisher path_pub_;
+        ros::Subscriber robot_pose_sub_;
+        void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
         bool run_control(bool is_last_goal = false);
@@ -58,6 +66,7 @@ class PreviewController {
         void stop_robot();
         void publish_cmd_vel();
         void publish_look_pose(const geometry_msgs::PoseStamped& look_pose);
+        void publish_path();
         void boundvel(double ref_vel);
         void boundomega(double ref_omega);
         int closest_point(double x, double y);
@@ -119,6 +128,11 @@ class PreviewController {
 
         int targetid;
         ros::NodeHandle nh_;
+        
+        // Standalone operation variables
+        bool initial_pose_received_;
+        bool path_generated_;
+        ros::Timer control_timer_;
 };
 
 class dwa_controller {
