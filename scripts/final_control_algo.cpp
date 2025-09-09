@@ -94,7 +94,7 @@ void PreviewController::initialize_dwa_controller() {
 void PreviewController::generate_snake_path(double start_x, double start_y, double start_theta) {
     current_path.clear();
     
-    // Snake path parameters (similar to Python version)
+    // Snake path parameters (Adjust these)
     double amplitude = 14.0;
     double wavelength = 20.0;
     double length = 40.0;
