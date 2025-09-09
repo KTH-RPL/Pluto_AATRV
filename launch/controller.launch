@@ -1,0 +1,37 @@
+<launch>
+    <!-- Start the controller node -->
+    <node pkg="milestone1" type="final_control_algo" name="final_control_algo" output="screen">
+        <!-- Main Controller Params -->
+        <param name="linear_velocity" value="0.8" />
+        <param name="preview_dt" value="0.1" />
+        <param name="max_vel" value="1.0" />
+        <param name="max_omega" value="0.5" />
+        <param name="vel_acc" value="0.5" />
+        <param name="omega_acc" value="0.4" />
+        <param name="robot_radius" value="0.5" />
+        <param name="lookahead_distance" value="1.5" />
+        <param name="goal_distance_threshold" value="0.2" />
+
+        <!-- Tuning Params -->
+        <param name="max_cte" value="1.5" />
+        <param name="max_lookahead_heading_error" value="0.3" />
+        <param name="kp_adjust_cte" value="2.0" />
+        
+        <!-- Preview Controller Gains -->
+        <rosparam param="Q_params">[5.0, 6.0, 5.0]</rosparam>
+        <param name="R" value="1.0" />
+
+        <!-- DWA Params -->
+        <param name="predict_time" value="2.0" />
+        <param name="dt_dwa" value="0.1" />
+        <param name="path_distance_bias" value="20.0" />
+        <param name="goal_distance_bias" value="0.5" />
+        <param name="occdist_scale" value="10.0" />
+        <param name="speed_ref_bias" value="0.05" />
+        <param name="away_bias" value="20.0" />
+        <param name="vx_samples" value="3" />
+        <param name="omega_samples" value="5" />
+        <param name="min_speed" value="0.0" />
+
+    </node>
+</launch>
