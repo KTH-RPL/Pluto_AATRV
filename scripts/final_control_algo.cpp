@@ -2,21 +2,22 @@
 #include <Eigen/LU>
 #include <cmath>
 #include <unsupported/Eigen/MatrixFunctions>
-#include <tf/transform_datatypes.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2/utils.h>
 #include <std_msgs/Float64.h>
 #include <ros/ros.h>
 #include <limits>
 #include <algorithm>
 #include <threading>
+#include <cmath>
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
-      prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0) // Check on adding NodeHandle here 
+      prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0),
+      initial_pose_received_(false), path_generated_(false) // Check on adding NodeHandle here 
 {
     robot_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/atrv/cmd_vel", 10);
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
+    path_pub_ = nh_.advertise<nav_msgs::Path>("planned_path", 10);
+    robot_pose_sub_ = nh_.subscribe("/robot_pose", 10, &PreviewController::robot_pose_callback, this);
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
     nh_.param("preview_controller/linear_velocity", linear_velocity_, 1.0);
@@ -66,10 +67,99 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     omega_acc_bound = omega_acc_ * dt_;
 }
 
+void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+    current_pose = *msg;
+    robot_x = current_pose.pose.position.x;
+    robot_y = current_pose.pose.position.y;
+    robot_theta = current_pose.pose.orientation.z;
+    
+    // Generate path on first pose received
+    if (!initial_pose_received_) {
+        initial_pose_received_ = true;
+        ROS_INFO("Initial robot pose received: x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
+        generate_snake_path(robot_x, robot_y, robot_theta);
+        initialize_dwa_controller();
+        path_generated_ = true;
+        publish_path();  // Publish the generated path
+        ROS_INFO("Snake path generated with %d waypoints", max_path_points);
+    }
+}
 
 // Need to call this after setting the current_path from execute planner, also need to set max_path_points 
 void PreviewController::initialize_dwa_controller() {
-    dwa_controller_ = dwa_controller(current_path, targetid, max_path_points);
+    dwa_controller_ptr = new dwa_controller(current_path, targetid, max_path_points);
+}
+
+// Generate snake path starting from robot's initial position
+void PreviewController::generate_snake_path(double start_x, double start_y, double start_theta) {
+    current_path.clear();
+    
+    // Snake path parameters (Adjust these)
+    double amplitude = 14.0;
+    double wavelength = 20.0;
+    double length = 40.0;
+    double point_spacing = 0.5;
+    int num_points = static_cast<int>(std::ceil(length / point_spacing)) + 1;
+    
+    // Generate snake path
+    for (int i = 0; i < num_points; ++i) {
+        double x = start_x + (length * i) / (num_points - 1);
+        double y = start_y + amplitude * std::sin(2.0 * M_PI * (x - start_x) / wavelength);
+        
+        // Calculate orientation based on path derivative
+        double dx = 1.0;  // dx/dt = constant for linear x progression
+        double dy = amplitude * (2.0 * M_PI / wavelength) * std::cos(2.0 * M_PI * (x - start_x) / wavelength);
+        double theta = std::atan2(dy, dx);
+        
+        // Normalize theta to [-pi, pi]
+        while (theta > M_PI) theta -= 2.0 * M_PI;
+        while (theta < -M_PI) theta += 2.0 * M_PI;
+        
+        current_path.emplace_back(x, y, theta);
+    }
+    
+    max_path_points = current_path.size();
+    ROS_INFO("Generated snake path with %d points", max_path_points);
+}
+
+// Initialize standalone operation
+void PreviewController::initialize_standalone_operation() {
+    ROS_INFO("Initializing standalone preview controller...");
+    ROS_INFO("Waiting for robot pose...");
+    
+    // Wait for initial pose and path generation
+    ros::Rate rate(10);
+    while (ros::ok() && !path_generated_) {
+        ros::spinOnce();
+        rate.sleep();
+    }
+    
+    if (path_generated_) {
+        // Start control timer
+        control_timer_ = nh_.createTimer(ros::Duration(dt_), 
+            [this](const ros::TimerEvent&) { 
+                if (path_generated_) {
+                    bool goal_reached = this->run_control();
+                    if (goal_reached) {
+                        ROS_INFO("Goal reached! Stopping control.");
+                        this->control_timer_.stop();
+                    }
+                }
+            });
+        
+        ROS_INFO("Standalone preview controller initialized successfully!");
+        ROS_INFO("Control loop started with dt = %.3f seconds", dt_);
+    } else {
+        ROS_ERROR("Failed to generate path. Exiting.");
+    }
+}
+
+// Main standalone control loop
+void PreviewController::run_standalone_control() {
+    initialize_standalone_operation();
+    
+    // Keep the node running
+    ros::spin();
 }
 
 double PreviewController::distancecalc(double x1, double y1, double x2, double y2) {
@@ -230,7 +320,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     }
 
     // Call DWA controller
-    DWAResult dwa_result = dwa_controller_.dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
 
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
@@ -369,6 +459,33 @@ void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) 
     lookahead_point_pub_.publish(look_pose);
 }
 
+// Publish the planned path
+void PreviewController::publish_path() {
+    nav_msgs::Path path_msg;
+    path_msg.header.stamp = ros::Time::now();
+    path_msg.header.frame_id = "map";
+    
+    for (const auto& waypoint : current_path) {
+        geometry_msgs::PoseStamped pose;
+        pose.header.stamp = ros::Time::now();
+        pose.header.frame_id = "map";
+        pose.pose.position.x = waypoint.x;
+        pose.pose.position.y = waypoint.y;
+        pose.pose.position.z = 0.0;
+        
+        // Convert theta to quaternion
+        pose.pose.orientation.x = 0.0;
+        pose.pose.orientation.y = 0.0;
+        pose.pose.orientation.z = std::sin(waypoint.theta / 2.0);
+        pose.pose.orientation.w = std::cos(waypoint.theta / 2.0);
+        
+        path_msg.poses.push_back(pose);
+    }
+    
+    path_pub_.publish(path_msg);
+    ROS_INFO("Published planned path with %zu waypoints to 'planned_path' topic", current_path.size());
+}
+
 
 dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points)
     : current_path_(&path), target_idx_(&target_idx), max_path_points_(&max_points),
@@ -499,7 +616,7 @@ double dwa_controller::calc_obstacle_cost() {
 
     for (const auto& point : traj_list_) {
         for (size_t i = 0; i < obstacles.size(); ++i) {
-            dist = obstacle_check(point[0], point[1], obstacle[i].x, obstacle[i].y, obstacle[i].width, obstacle[i].height);
+            dist = obstacle_check(point[0], point[1], obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
             
             if (dist < collision_dist) {
                 obs_cost += 1.0 - dist / (collision_dist + 0.01);
@@ -599,3 +716,5 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
 
     return {best_v, best_omega, worst_obsi, worst_mindist};
 }
+
+
