@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" />
+    <node pkg="robot_controller" type="control_node" name="controller_node" output="screen" />
+
+</launch>
