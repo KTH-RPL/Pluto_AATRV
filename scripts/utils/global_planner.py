@@ -10,10 +10,12 @@ Assumptions:
 import gmap_utility
 import numpy as np
 import math
-import rospy
+# import rospy
 import scipy.interpolate as si
 import random
 import os
+from scipy.spatial import KDTree
+
 
 
 import argparse
@@ -68,7 +70,7 @@ def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_n
     x, y = node[:2]
 
     for _ in range(num_samples):  # Generate multiple candidate points
-        angle = random.uniform(0, 2 * math.pi)  # Random direction
+        angle = random.uniform(-math.pi, math.pi)  # Random direction
         xn = x + step_size * math.cos(angle)
         yn = y + step_size * math.sin(angle)
         thetan = random.uniform(-math.pi, math.pi)  # Random heading
@@ -78,10 +80,100 @@ def generate_neighbors(node, step_size=0.5, num_samples=5, check_node_valid=is_n
         if check_node_valid(new_node):
         # if is_node_valid(new_node, map_param, obstacles=obstacles):
             neighbors.append(new_node)  # No steering angle needed
+        # else:
+            # print(f"{new_node} is not valid")
 
     return neighbors
 
-def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=0.4, goal_threshold=0.3, num_samples=5, max_iter=1000000, prob_goal_bias=0.2, verbose=False):
+def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_size=3.0, goal_threshold=0.5, num_samples=10, max_iter=1000000, prob_goal_bias=0.3, verbose=False):
+    """
+    RRT planner optimized with a k-d tree for fast nearest-neighbor searches.
+    """
+    tree = {start: None}
+    nodes = [start]
+    
+    # --- KDTree Optimization ---
+    # We maintain a separate list of 2D coordinates to build the k-d tree,
+    # as it's much faster than working with the full (x, y, theta) tuples.
+    node_coords = [start[:2]]
+
+    # --- DYNAMIC STEP SIZE LOGIC ---
+    # Define the min/max bounds for our step size.
+    MIN_STEP_SIZE = 0.4  # The smallest step the planner can take.
+    MAX_STEP_SIZE = 5.0  # The largest step the planner can take.
+    
+    # Calculate the straight-line distance to the goal.
+    distance_to_goal = euclidean_dist(start[:2], goal[:2])
+    
+    # Scale the step size based on the distance. Here, we'll make the
+    # ideal step size about 1/5th of the total distance.
+    # You can tune this scaling factor (0.2) to change aggressiveness.
+    dynamic_step_size = distance_to_goal * 0.2
+    
+    # Clamp the calculated step size between the min and max bounds.
+    # This prevents it from being too small for tiny distances or too
+    # large for very long distances.
+    step_size = max(MIN_STEP_SIZE, min(dynamic_step_size, MAX_STEP_SIZE))
+    
+    xlb, ylb, xub, yub = map_param
+
+    for i in range(max_iter):
+        if verbose:
+            print("Iteration {}".format(i))
+        
+        # 1. Sample a random point
+        if random.random() < prob_goal_bias:
+            x_rand = goal
+        else:
+            x_rand = (
+                random.uniform(xlb, xub),
+                random.uniform(ylb, yub),
+                random.uniform(-math.pi, math.pi)
+            )
+        
+        # --- KDTree Optimization ---
+        # 2. Find the nearest node using the k-d tree (O(log N) search)
+        # This replaces the slow linear search: `min(nodes, key=...)`
+        kdtree = KDTree(node_coords)
+        _, idx = kdtree.query(x_rand[:2])
+        x_nearest = nodes[idx]
+        
+        if verbose:
+            print("> Exploration node selected {}".format(x_nearest))
+            
+        # 3. Generate random neighbors from the nearest node
+        neighbors = generate_neighbors(x_nearest, step_size=step_size, num_samples=num_samples, check_node_valid=check_node_valid, verbose=verbose)
+
+        if verbose:
+            print("> Neighbors generated")
+
+        # 4. Process new potential nodes
+        for x_new in neighbors:
+            # Add the new node to the tree if it's valid
+            # (The original code had a duplicate validity check here, which is fine)
+            if check_node_valid(x_new):
+                tree[x_new] = x_nearest
+                nodes.append(x_new)
+                
+                # --- KDTree Optimization ---
+                # Keep the coordinate list in sync with the main node list
+                node_coords.append(x_new[:2])
+                
+                if verbose:
+                    print("Append node {}".format(x_new))
+
+                # 5. Goal proximity check
+                if euclidean_dist(x_new[:2], goal[:2]) < goal_threshold:
+                    if verbose:
+                        print("Goal reached on iteration {}".format(i))
+                    # Return the full path, the tree, and all nodes
+                    return reconstruct_path(tree, x_new), tree, nodes
+
+    print("RRT planner failed to find a path after max iterations.")
+    # Return None for all expected values if no path is found
+    return None, None, None
+    
+def rrt_planner_old(start, goal, map_param, check_node_valid=is_node_valid, step_size=3.0, goal_threshold=0.5, num_samples=10, max_iter=1000000, prob_goal_bias=0.3, verbose=False):
     tree = {start: None}
     nodes = [start]
     explored = []
@@ -122,11 +214,12 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
             attempts += 1
 
         if attempts == max_attempts:
-            rospy.logwarn("Could not find a new node to explore after multiple attempts!")
+            print("Could not find a new node to explore after multiple attempts!")
             continue  # Skip this iteration
         
         if verbose:
             print("> Exploration node selected {}".format(x_nearest))
+            
 
         # print(x_nearest)
 
@@ -154,6 +247,7 @@ def rrt_planner(start, goal, map_param, check_node_valid=is_node_valid, step_siz
                     return reconstruct_path(tree, x_new), tree, nodes
 
             iq+=1
+        # explored.append(x_nearest) ##
 
     return None
 
@@ -381,7 +475,7 @@ def apply_spline_at_sharp_turns(path, angle_threshold=math.pi / 6, num_points=15
         list: A partially smoothed path.
     """
     if len(path) < 3:
-        rospy.logwarn("Not enough points for sharp turn detection, returning original path.")
+        print("Not enough points for sharp turn detection, returning original path.")
         return path
 
     smoothed_path = [path[0]]  # Start with the first point
@@ -575,6 +669,7 @@ def execute_global_planning(start, goal, sim_plan=False, sim_obstacles=None, ver
             return is_safe
 
     map_param = [start[0], start[1], goal[0], goal[1]]
+    print(map_param)
 
     # Run the RRT planner
     print("Running RRT Planner")
