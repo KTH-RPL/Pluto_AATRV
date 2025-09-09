@@ -9,6 +9,7 @@
 #include <ros/ros.h>
 #include <limits>
 #include <algorithm>
+#include <threading>
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
@@ -371,7 +372,8 @@ void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) 
 
 dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points)
     : current_path_(&path), target_idx_(&target_idx), max_path_points_(&max_points),
-      min_obs_num(0), min_obs_dist(std::numeric_limits<double>::infinity()) {
+      min_obs_num(0), min_obs_dist(std::numeric_limits<double>::infinity()), collision_dist(std::numeric_limits<double>::infinity()),
+      dx(0), dy(0), dist(0) {    
 
     // Future prediction horizion, not too big as most costs measured with last point
     nh_.param("dwa_controller/predict_time", predict_time_, 2.0);
@@ -398,7 +400,22 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/linear_velocity", ref_velocity_, 0.8);
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
+    
+    obstacle_sub_ = nh_.subscribe("/detected_obstacles", 10, &dwa_controller::obstacle_callback, this);
+
 }
+
+void dwa_controller::obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg) {
+    obstacles.clear(); // Clear previous obstacles
+    for (const auto& marker : msg->markers) {
+        double x = marker.pose.position.x;
+        double y = marker.pose.position.y;
+        double height = marker.scale.y;
+        double width = marker.scale.x;
+        obstacles.emplace_back(x, y, width, height);
+    }
+}
+
 
 
 // bounds and calculates window within acc
@@ -476,20 +493,14 @@ double dwa_controller::calc_obstacle_cost() {
     if (traj_list_.empty())
         return 0.0;
 
-    double obs_cost = 0.0;
+    obs_cost = 0.0;
     min_obs_num = 0;
     min_obs_dist = std::numeric_limits<double>::infinity();
 
     for (const auto& point : traj_list_) {
-        double traj_x = point[0];
-        double traj_y = point[1];
-
         for (size_t i = 0; i < obstacles.size(); ++i) {
-            double dx = traj_x - obstacles[i].first;
-            double dy = traj_y - obstacles[i].second;
-            double dist = std::hypot(dx, dy);
-            double collision_dist = collision_robot_coeff * robot_radius_ + collision_obstacle_coeff * 0.5;
-
+            dist = obstacle_check(point[0], point[1], obstacle[i].x, obstacle[i].y, obstacle[i].width, obstacle[i].height);
+            
             if (dist < collision_dist) {
                 obs_cost += 1.0 - dist / (collision_dist + 0.01);
             }
@@ -513,15 +524,40 @@ double dwa_controller::calc_away_from_obstacle_cost(int obs_idx, double v, doubl
     double traj_y = last_point[1];
     double traj_theta = last_point[2];
 
-    double obs_x = obstacles[obs_idx].first;
-    double obs_y = obstacles[obs_idx].second;
+    double obs_x = obstacles[obs_idx].x;
+    double obs_y = obstacles[obs_idx].y;
 
     double theta_er = std::atan2(obs_y - traj_y, obs_x - traj_x) - traj_theta;
     theta_er = std::atan2(std::sin(theta_er), std::cos(theta_er));
 
-    double dist = std::hypot(traj_x - obs_x, traj_y - obs_y);
+    dist = std::hypot(traj_x - obs_x, traj_y - obs_y);
     return 50.0 / ((std::abs(theta_er) + 1.0) * dist + 0.01);
 }
+
+double dwa_controller::obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height) 
+{
+    dx = traj_x;
+    dy = traj_y;
+    dist = 0;
+
+    if (traj_x > obs_x + (obs_width / 2.0))
+        dx = obs_x + obs_width / 2.0;
+    if (traj_x < obs_x - (obs_width / 2.0))
+        dx = obs_x - (obs_width / 2.0);
+    if (traj_y > obs_y + (obs_height / 2.0))
+        dy = obs_y + obs_height / 2.0 - traj_y;
+    if (traj_y < obs_y - (obs_height / 2.0))
+        dy = obs_y - (obs_height / 2.0);
+    
+
+    collision_dist = collision_robot_coeff * robot_radius_ + collision_obstacle_coeff * (std::sqrt(std::pow(dx-obs_x, 2) + std::pow(dy-obs_y, 2)));
+    
+    dist = std::sqrt(std::pow(obs_x-traj_x, 2) + std::pow(obs_y-traj_y, 2));
+    
+    return dist;
+}
+
+
 
 // Main cost calc
 DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, double v, double omega) {
