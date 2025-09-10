@@ -1,0 +1,8 @@
+# Goal: Set of intermediate waypoints for the robot navigation
+geometry_msgs/PoseArray waypoints
+---
+# Result: The final path of the global planner
+nav_msgs/Path global_plan
+---
+# Feedback: Path segment for the most recently processed waypoint
+nav_msgs/Path current_segment
