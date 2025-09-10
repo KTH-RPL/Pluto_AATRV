@@ -70,6 +70,7 @@ class PreviewController {
         bool run_control(bool is_last_goal = false);
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
+        void calculate_all_curvatures(); // Calculate curvatures for all path points
         void compute_control(double cross_track_error, double heading_error, double path_curvature);
         double distancecalc(double x1, double y1, double x2, double y2);
         bool chkside(double path_theta);
@@ -114,6 +115,7 @@ class PreviewController {
         double preview_loop_thresh;
         double robot_radius_;
         double path_curvature_;
+        std::vector<double> path_curvatures_; // Precomputed curvatures for all path points
         double collision_robot_coeff;
         double collision_obstacle_coeff;
 

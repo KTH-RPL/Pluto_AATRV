@@ -44,7 +44,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     // Measure robot_radius and set
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);
-    nh_.param("preview_controller/lookahead_distance", lookahead_distance_, 1.0);
+    nh_.param("preview_controller/lookahead_distance", lookahead_distance_, 0.5);
 
     // Max cross track error so robot moves towards the target first
     nh_.param("preview_controller/max_cte", max_cte, 1.5);
@@ -90,8 +90,13 @@ void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::Co
         generate_snake_path(robot_x, robot_y, robot_theta);
         initialize_dwa_controller();
         path_generated_ = true;
+        calculate_all_curvatures(); // Precompute curvatures for all path points
         publish_path();  // Publish the generated path
         ROS_INFO("Snake path generated with %d waypoints", max_path_points);
+    }
+
+    if (initial_pose_received_) {
+        publish_path();  
     }
 }
 
@@ -105,10 +110,10 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
     current_path.clear();
     
     // Snake path parameters (Adjust these)
-    double amplitude = 14.0;
-    double wavelength = 20.0;
-    double length = 40.0;
-    double point_spacing = 0.5;
+    double amplitude = 2.0;
+    double wavelength = 4.0;
+    double length = 10.0;
+    double point_spacing = 0.3;
     int num_points = static_cast<int>(std::ceil(length / point_spacing)) + 1;
     
     // Generate snake path
@@ -254,6 +259,34 @@ double PreviewController::calculate_curvature(std::vector<double> x, std::vector
     return curvature;
 }
 
+// Calculate curvatures for all path points at once
+void PreviewController::calculate_all_curvatures() {
+    path_curvatures_.clear();
+    path_curvatures_.resize(max_path_points, 0.0);
+    
+    // Calculate curvature for each point (need at least 3 points)
+    for (int i = 0; i < max_path_points; ++i) {
+        if (i == 0 || i == max_path_points - 1) {
+            // First and last points have zero curvature
+            path_curvatures_[i] = 0.0;
+        } else {
+            // Use current point and its neighbors
+            std::vector<double> x_vals = {
+                current_path[i-1].x,
+                current_path[i].x,
+                current_path[i+1].x
+            };
+            std::vector<double> y_vals = {
+                current_path[i-1].y,
+                current_path[i].y,
+                current_path[i+1].y
+            };
+            path_curvatures_[i] = calculate_curvature(x_vals, y_vals);
+        }
+    }
+    ROS_INFO("Calculated curvatures for %d path points", max_path_points);
+}
+
 double PreviewController::cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref) {
     double cte = (y_ref - y_r) * std::cos(theta_ref) - (x_ref - x_r) * std::sin(theta_ref);
     return cte;
@@ -332,11 +365,13 @@ bool PreviewController::run_control(bool is_last_goal) {
         lookahead_heading_error_pub_.publish(lhe_msg);
         // ---------------------------------------
 
-        if (lookahead_heading_error_ > max_lookahead_heading_error) {
+        if (std::abs(lookahead_heading_error_) > max_lookahead_heading_error) {
             boundvel(0.0001);
             boundomega(kp_adjust_cte * lookahead_heading_error_);
+            ROS_INFO("Adjusting Lookahead Heading Error: %f", lookahead_heading_error_);
             bounded = true;
         } else {
+            ROS_INFO("Adjusting Cross Track Error: %f", cross_track_error_);
             boundvel(cross_track_error_ * kp_adjust_cte);
             bounded = true;
         }
@@ -357,8 +392,8 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (dwa_result.obsi_mindist < collision_robot_coeff * robot_radius_ + collision_obstacle_coeff * obstacle_radius) {
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
-    } 
-    
+        ROS_INFO("DWA result: v = %f, omega = %f", v_, omega_);
+    }     
     else 
     // Call preview Controller
     {
@@ -378,9 +413,6 @@ bool PreviewController::run_control(bool is_last_goal) {
         heading_error_pub_.publish(he_msg);
         // -----------------------------
 
-        std::vector<double> x_vals = {current_path[targetid].x};
-        std::vector<double> y_vals = {current_path[targetid].y};
-
         // Calls to compute the omega
         compute_control(cross_track_error_, heading_error_, path_curvature_);
         
@@ -389,6 +421,7 @@ bool PreviewController::run_control(bool is_last_goal) {
         pc_msg.data = path_curvature_;
         path_curvature_pub_.publish(pc_msg);
         // ------------------------------
+        ROS_INFO("Preview Control: v = %f, omega = %f", v_, omega_);
     }
 
     // --- PUBLISH CURRENT VELOCITY ---
@@ -456,18 +489,23 @@ void PreviewController::compute_control(double cross_track_error, double heading
     x_state << cross_track_error, v_ * std::sin(heading_error), heading_error;
 
     std::vector<double> preview_curv(preview_steps_ + 1);
-    std::vector<double> x_vals, y_vals;
+    
+    // Use precomputed curvatures for preview steps
     for (int i = 0; i <= preview_steps_; ++i) {
-        if (targetid + 2 < max_path_points) {
-            x_vals.push_back(current_path[targetid + 1].x);
-            y_vals.push_back(current_path[targetid + 1].y);
-            x_vals.push_back(current_path[targetid + 2].x);
-            y_vals.push_back(current_path[targetid + 2].y);
+        int preview_idx = targetid + i;
+        if (preview_idx < max_path_points && preview_idx < path_curvatures_.size()) {
+            preview_curv[i] = path_curvatures_[preview_idx];
+        } else {
+            // If beyond path, use zero curvature
+            preview_curv[i] = 0.0;
         }
-        path_curvature_ = calculate_curvature(x_vals, y_vals);
-        x_vals.clear();
-        y_vals.clear();
-        preview_curv[i] = path_curvature;
+    }
+    
+    // Set current path curvature for publishing
+    if (targetid < path_curvatures_.size()) {
+        path_curvature_ = path_curvatures_[targetid];
+    } else {
+        path_curvature_ = 0.0;
     }
 
     Eigen::VectorXd curv_vec = Eigen::Map<Eigen::VectorXd>(preview_curv.data(), preview_steps_ + 1);
@@ -503,7 +541,7 @@ void PreviewController::publish_cmd_vel() {
 // Publish the lookahead point
 void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) {
     look_pose.header.stamp = ros::Time::now();
-    look_pose.header.frame_id = "map"; //Change the frame if needed
+    look_pose.header.frame_id = "odom"; //Change the frame if needed
     lookahead_point_pub_.publish(look_pose);
 }
 
@@ -511,12 +549,12 @@ void PreviewController::publish_look_pose(geometry_msgs::PoseStamped look_pose) 
 void PreviewController::publish_path() {
     nav_msgs::Path path_msg;
     path_msg.header.stamp = ros::Time::now();
-    path_msg.header.frame_id = "map";
+    path_msg.header.frame_id = "odom";
     
     for (const auto& waypoint : current_path) {
         geometry_msgs::PoseStamped pose;
         pose.header.stamp = ros::Time::now();
-        pose.header.frame_id = "map";
+        pose.header.frame_id = "odom";
         pose.pose.position.x = waypoint.x;
         pose.pose.position.y = waypoint.y;
         pose.pose.position.z = 0.0;
