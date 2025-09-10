@@ -69,14 +69,14 @@ class PreviewController {
     private:
         bool run_control(bool is_last_goal = false);
         void calcGains();
-        double calculate_curvature(const std::vector<double>& x, const std::vector<double>& y);
+        double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
         void compute_control(double cross_track_error, double heading_error, double path_curvature);
         double distancecalc(double x1, double y1, double x2, double y2);
         bool chkside(double path_theta);
         void lookahead_heading_error(double x_ref, double y_ref, double theta_ref);
         void stop_robot();
         void publish_cmd_vel();
-        void publish_look_pose(const geometry_msgs::PoseStamped& look_pose);
+        void publish_look_pose(const geometry_msgs::PoseStamped look_pose);
         void publish_path();
         void boundvel(double ref_vel);
         void boundomega(double ref_omega);
