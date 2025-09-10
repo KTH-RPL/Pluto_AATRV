@@ -18,6 +18,16 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
     path_pub_ = nh_.advertise<nav_msgs::Path>("planned_path", 10);
     robot_pose_sub_ = nh_.subscribe("/robot_pose", 10, &PreviewController::robot_pose_callback, this);
+
+    // --- INITIALIZE DEBUG PUBLISHERS ---
+    cross_track_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/cross_track_error", 10);
+    heading_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/heading_error", 10);
+    lookahead_heading_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/lookahead_heading_error", 10);
+    current_v_pub_ = nh_.advertise<std_msgs::Float64>("debug/current_v", 10);
+    current_omega_pub_ = nh_.advertise<std_msgs::Float64>("debug/current_omega", 10);
+    path_curvature_pub_ = nh_.advertise<std_msgs::Float64>("debug/path_curvature", 10);
+    // -----------------------------------
+
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
     nh_.param("preview_controller/linear_velocity", linear_velocity_, 1.0);
@@ -306,9 +316,22 @@ bool PreviewController::run_control(bool is_last_goal) {
 
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 
+    // --- PUBLISH CROSS TRACK ERROR ---
+    std_msgs::Float64 cte_msg;
+    cte_msg.data = cross_track_error_;
+    cross_track_error_pub_.publish(cte_msg);
+    // ---------------------------------
+
     // If CTE high, focus on moving to lookahead
     if (std::abs(cross_track_error_) > max_cte) {
         lookahead_heading_error(current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
+        
+        // --- PUBLISH LOOKAHEAD HEADING ERROR ---
+        std_msgs::Float64 lhe_msg;
+        lhe_msg.data = lookahead_heading_error_;
+        lookahead_heading_error_pub_.publish(lhe_msg);
+        // ---------------------------------------
+
         if (lookahead_heading_error_ > max_lookahead_heading_error) {
             boundvel(0.0001);
             boundomega(kp_adjust_cte * lookahead_heading_error_);
@@ -348,15 +371,40 @@ bool PreviewController::run_control(bool is_last_goal) {
         } else if (heading_error_ < -M_PI) {
             heading_error_ += 2 * M_PI;
         }
+
+        // --- PUBLISH HEADING ERROR ---
+        std_msgs::Float64 he_msg;
+        he_msg.data = heading_error_;
+        heading_error_pub_.publish(he_msg);
+        // -----------------------------
+
         std::vector<double> x_vals = {current_path[targetid].x};
         std::vector<double> y_vals = {current_path[targetid].y};
 
         // Calls to compute the omega
         compute_control(cross_track_error_, heading_error_, path_curvature_);
+        
+        // --- PUBLISH PATH CURVATURE ---
+        std_msgs::Float64 pc_msg;
+        pc_msg.data = path_curvature_;
+        path_curvature_pub_.publish(pc_msg);
+        // ------------------------------
     }
 
-    // Publish the cmd_vel
+    // --- PUBLISH CURRENT VELOCITY ---
+    std_msgs::Float64 v_msg;
+    v_msg.data = v_;
+    current_v_pub_.publish(v_msg);
+    // --------------------------------
+    
+    // Publish the cmd_vel (this also clips omega_)
     publish_cmd_vel();
+    
+    // --- PUBLISH CURRENT (CLIPPED) OMEGA ---
+    std_msgs::Float64 omega_msg;
+    omega_msg.data = omega_;
+    current_omega_pub_.publish(omega_msg);
+    // ---------------------------------------
 
     // Publish the lookahead point
     geometry_msgs::PoseStamped look_pose;
@@ -716,5 +764,3 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
 
     return {best_v, best_omega, worst_obsi, worst_mindist};
 }
-
-

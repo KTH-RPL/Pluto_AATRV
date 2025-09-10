@@ -10,6 +10,7 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/Path.h>
 #include <limits>
+#include <std_msgs/Float64.h> // Include for debug message type
 
 struct Waypoint {
     double x;
@@ -52,6 +53,16 @@ class PreviewController {
         ros::Publisher robot_vel_pub_;
         ros::Publisher lookahead_point_pub_;
         ros::Publisher path_pub_;
+        
+        // --- ADDED DEBUG PUBLISHERS ---
+        ros::Publisher cross_track_error_pub_;
+        ros::Publisher heading_error_pub_;
+        ros::Publisher lookahead_heading_error_pub_;
+        ros::Publisher current_v_pub_;
+        ros::Publisher current_omega_pub_;
+        ros::Publisher path_curvature_pub_;
+        // ------------------------------
+        
         ros::Subscriber robot_pose_sub_;
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
