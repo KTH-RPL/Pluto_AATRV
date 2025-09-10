@@ -7,7 +7,7 @@ from nav_msgs.msg import Path
 import tf.transformations as tft
 
 from utils.global_planner import execute_global_planning
-from milestone2.msg import PlanGlobalPathAction, PlanGlobalPathFeedback, PlanGlobalPathResult
+from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathFeedback, PlanGlobalPathResult
 
 # Initial robot pose, will be updated from POSE_TOPIC
 CURRENT_ROBOT_POSE = None
