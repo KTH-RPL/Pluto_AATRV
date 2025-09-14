@@ -82,28 +82,28 @@ class PolygonMap:
 
 
 
-"""for testing"""
+# """for testing"""
 
-if __name__ == "__main__":
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    folder = os.path.join(repo_root,"milestone2_gmap_dataset")
-    boundary_file = os.path.join(folder, "final_boundary_comb.ply")
-    obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]
+# if __name__ == "__main__":
+#     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+#     folder = os.path.join(repo_root,"milestone2_gmap_dataset")
+#     boundary_file = os.path.join(folder, "final_boundary_comb.ply")
+#     obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]
 
-    trajectory = [(130, 85), (128, 88), (126, 90), (125, 90), (120, 97)]
-    robot_radius = 1.2
-    polygon_map = PolygonMap(boundary_file, obstacle_files)
+#     trajectory = [(130, 85), (128, 88), (126, 90), (125, 90), (120, 97)]
+#     robot_radius = 1.2
+#     polygon_map = PolygonMap(boundary_file, obstacle_files)
 
-    # Check if trajectory is safe
-    is_safe, message = polygon_map.is_trajectory_safe(trajectory, radius=robot_radius)
-    print(is_safe)
-    print(message)
+#     # Check if trajectory is safe
+#     is_safe, message = polygon_map.is_trajectory_safe(trajectory, radius=robot_radius)
+#     print(is_safe)
+#     print(message)
 
-    # Visualize the map with trajectory
-    polygon_map.visualize(trajectory=trajectory, radius=robot_radius)
-else:
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    folder = os.path.join(repo_root,"milestone2_gmap_dataset")
-    boundary_file = os.path.join(folder, "final_boundary_comb.ply")
-    obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]
-    polygon_map = PolygonMap(boundary_file, obstacle_files)
+#     # Visualize the map with trajectory
+#     polygon_map.visualize(trajectory=trajectory, radius=robot_radius)
+# else:
+#     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+#     folder = os.path.join(repo_root,"milestone2_gmap_dataset")
+#     boundary_file = os.path.join(folder, "final_boundary_comb.ply")
+#     obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]
+#     polygon_map = PolygonMap(boundary_file, obstacle_files)
