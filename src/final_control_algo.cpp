@@ -597,10 +597,10 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
     nh_.param("preview_controller/min_speed", min_speed_, 0.0);
-    nh_.param("preview_controller/max_speed", max_speed_, 0.4);
+    nh_.param("preview_controller/max_speed", max_speed_, 0.3);
     nh_.param("preview_controller/max_omega", max_omega_, 0.5);
     nh_.param("preview_controller/dt_dwa", dt_dwa_, 0.1);
-    nh_.param("preview_controller/linear_velocity", ref_velocity_, 0.8);
+    nh_.param("preview_controller/linear_velocity", ref_velocity_, 0.3);
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
     
