@@ -400,7 +400,7 @@ bool PreviewController::run_control(bool is_last_goal) {
         if (!bounded)
             // Increase vel to the target vel
             boundvel(linear_velocity_);
-        heading_error_ = robot_theta - current_path[targetid].theta;
+        heading_error_ = - robot_theta + current_path[targetid].theta;
         if (heading_error_ > M_PI) {
             heading_error_ -= 2 * M_PI;
         } else if (heading_error_ < -M_PI) {
