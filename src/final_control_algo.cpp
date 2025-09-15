@@ -727,7 +727,8 @@ double dwa_controller::calc_obstacle_cost() {
 
     for (const auto& point : traj_list_) {
         for (size_t i = 0; i < obstacles.size(); ++i) {
-            dist = obstacle_check(point[0], point[1], obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
+            double theta_diff = point[2] - traj_list_[0][2];
+            dist = obstacle_check(point[0], point[1], obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height, theta_diff);
             
             if (dist < collision_dist) {
                 obs_cost += 1.0 - dist / (collision_dist + 0.01);
@@ -762,20 +763,21 @@ double dwa_controller::calc_away_from_obstacle_cost(int obs_idx, double v, doubl
     return 50.0 / ((std::abs(theta_er) + 1.0) * dist + 0.01);
 }
 
-double dwa_controller::obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height) 
+double dwa_controller::obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff) 
 {
     dx = traj_x;
     dy = traj_y;
     dist = 0;
-
-    if (traj_x > obs_x + (obs_width / 2.0))
-        dx = obs_x + obs_width / 2.0;
-    if (traj_x < obs_x - (obs_width / 2.0))
-        dx = obs_x - (obs_width / 2.0);
-    if (traj_y > obs_y + (obs_height / 2.0))
-        dy = obs_y + obs_height / 2.0 - traj_y;
-    if (traj_y < obs_y - (obs_height / 2.0))
-        dy = obs_y - (obs_height / 2.0);
+    // Modify the  below code to calculate the collision distance based on the theta_diff
+    // Have to deduce an "obstacle radius" based on the closest point maybe
+    if (traj_x > obs_x + (obs_height / 2.0))
+        dx = obs_x + (obs_height / 2.0);
+    if (traj_x < obs_x - (obs_height / 2.0))
+        dx = obs_x - (obs_height / 2.0);
+    if (traj_y > obs_y + (obs_width / 2.0))
+        dy = obs_y + (obs_width / 2.0);
+    if (traj_y < obs_y - (obs_width / 2.0))
+        dy = obs_y - (obs_width / 2.0);
     
 
     collision_dist = collision_robot_coeff * robot_radius_ + collision_obstacle_coeff * (std::sqrt(std::pow(dx-obs_x, 2) + std::pow(dy-obs_y, 2)));
