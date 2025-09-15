@@ -30,14 +30,14 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
-    nh_.param("preview_controller/linear_velocity", linear_velocity_, 0.4);
+    nh_.param("preview_controller/linear_velocity", linear_velocity_, 0.3);
 
     // Frequency of the controller
     nh_.param("preview_controller/preview_dt", dt_, 0.1);
 
     // Control params 
-    nh_.param("preview_controller/max_vel", max_vel_, 0.4);
-    nh_.param("preview_controller/max_omega", max_omega_, 0.2);
+    nh_.param("preview_controller/max_vel", max_vel_, 0.3);
+    nh_.param("preview_controller/max_omega", max_omega_, 0.4);
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
     // nh_.param("preview_controller/max_domega", max_domega_, 0.2);
@@ -110,8 +110,8 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
     current_path.clear();
     
     // Snake path parameters (Adjust these)
-    double amplitude = 2.0;
-    double wavelength = 4.0;
+    double amplitude = 4;
+    double wavelength = 6;
     double length = 10.0;
     double point_spacing = 0.3;
     int num_points = static_cast<int>(std::ceil(length / point_spacing)) + 1;
@@ -597,8 +597,8 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
     nh_.param("preview_controller/min_speed", min_speed_, 0.0);
-    nh_.param("preview_controller/max_speed", max_speed_, 1.0);
-    nh_.param("preview_controller/max_omega", max_omega_, 0.2);
+    nh_.param("preview_controller/max_speed", max_speed_, 0.4);
+    nh_.param("preview_controller/max_omega", max_omega_, 0.5);
     nh_.param("preview_controller/dt_dwa", dt_dwa_, 0.1);
     nh_.param("preview_controller/linear_velocity", ref_velocity_, 0.8);
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
