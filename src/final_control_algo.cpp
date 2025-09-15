@@ -569,7 +569,7 @@ void PreviewController::publish_path() {
     }
     
     path_pub_.publish(path_msg);
-    ROS_INFO("Published planned path with %zu waypoints to 'planned_path' topic", current_path.size());
+    // ROS_INFO("Published planned path with %zu waypoints to 'planned_path' topic", current_path.size());
 }
 
 
