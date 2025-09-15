@@ -83,6 +83,8 @@ class PreviewController {
         void boundomega(double ref_omega);
         int closest_point(double x, double y);
 
+        bool initial_alignment_;
+
         Eigen::Matrix3d A_;
         Eigen::Vector3d B_;
         Eigen::Vector3d D_;

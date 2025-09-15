@@ -1,4 +1,5 @@
 preview_controller:
+  preview_steps: 0
   # Basic control parameters
   linear_velocity: 0.3
   preview_dt: 0.1
@@ -16,7 +17,7 @@ preview_controller:
   # Error thresholds
   max_cte: 1.5
   max_lookahead_heading_error: 0.2
-  goal_distance_threshold: 0.2
+  goal_distance_threshold: 0.5
   
   # Control tuning parameters
   preview_loop_thresh: 0.000001
@@ -29,8 +30,8 @@ preview_controller:
   collision_obstacle_coeff: 2.0
   
   # LQR controller parameters
-  # Q0 refers to cost for ey, Q1 refers to cost for etheta, Q2 refers to cost for etheta_dot
-  # Increase coefficient if you want to reduce particular error term
+  # Q0 refers to cost for ey, Q1 refers to cost for ey_dot, Q2 refers to cost for etheta
+  # Increase coefficient if you want to reduce particular error term, test to see how ey changes with high and low values, change sign based on that
   Q_params: [5.0, 6.0, 5.0]
 
   # R refers to cost for omega

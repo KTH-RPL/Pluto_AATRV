@@ -12,7 +12,7 @@
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
       prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0),
-      initial_pose_received_(false), path_generated_(false) // Check on adding NodeHandle here 
+      initial_pose_received_(false), path_generated_(false), initial_alignment_(false)
 {
     robot_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/atrv/cmd_vel", 10);
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
@@ -37,7 +37,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     // Control params 
     nh_.param("preview_controller/max_vel", max_vel_, 0.3);
-    nh_.param("preview_controller/max_omega", max_omega_, 0.4);
+    nh_.param("preview_controller/max_omega", max_omega_, 0.6);
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
     // nh_.param("preview_controller/max_domega", max_domega_, 0.2);
@@ -53,7 +53,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     nh_.param("preview_controller/max_lookahead_heading_error", max_lookahead_heading_error, 0.2);
 
     // For optimaizing the cost function, try diff params 
-    nh_.param("preview_controller/preview_loop_thresh", preview_loop_thresh, 1e-6);
+    nh_.param("preview_controller/preview_loop_thresh", preview_loop_thresh, 1e-5);
 
     // P gain to adjust high CTE
     nh_.param("preview_controller/kp_adjust_cte", kp_adjust_cte, 2.0);
@@ -195,10 +195,10 @@ void PreviewController::calcGains() {
           -v_;
 
     Q_ = Eigen::Matrix3d::Zero();
-    Q_(0, 0) = 5;
-    Q_(1, 1) = 6;
-    Q_(2, 2) = 5;
-    R_ << 1;
+    Q_(0, 0) = Q_params_[0];
+    Q_(1, 1) = Q_params_[1];
+    Q_(2, 2) = Q_params_[2];
+    R_ << R_param_;
 
     A_ = Eigen::Matrix3d::Identity() + A_ * dt_;
     B_ = B_ * dt_;
@@ -330,7 +330,8 @@ void PreviewController::boundomega(double ref_omega) {
 
 // Changed from NavigationSystem to PreviewController, main control loop
 bool PreviewController::run_control(bool is_last_goal) {
-    bool bounded = false;
+    bool bounded_vel = false;
+    bool bounded_omega = false;
     robot_x = current_pose.pose.position.x;
     robot_y = current_pose.pose.position.y;
     robot_theta = current_pose.pose.orientation.z;
@@ -345,7 +346,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
         targetid++;
     }
-    
+        
 
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 
@@ -354,28 +355,43 @@ bool PreviewController::run_control(bool is_last_goal) {
     cte_msg.data = cross_track_error_;
     cross_track_error_pub_.publish(cte_msg);
     // ---------------------------------
-
-    // If CTE high, focus on moving to lookahead
-    if (std::abs(cross_track_error_) > max_cte) {
-        lookahead_heading_error(current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
-        
-        // --- PUBLISH LOOKAHEAD HEADING ERROR ---
-        std_msgs::Float64 lhe_msg;
-        lhe_msg.data = lookahead_heading_error_;
-        lookahead_heading_error_pub_.publish(lhe_msg);
-        // ---------------------------------------
-
-        if (std::abs(lookahead_heading_error_) > max_lookahead_heading_error) {
-            boundvel(0.0001);
-            boundomega(kp_adjust_cte * lookahead_heading_error_);
+    lookahead_heading_error(current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
+    // --- PUBLISH LOOKAHEAD HEADING ERROR ---
+    std_msgs::Float64 lhe_msg;
+    lhe_msg.data = lookahead_heading_error_;
+    lookahead_heading_error_pub_.publish(lhe_msg);
+    // ---------------------------------------
+    
+    if (!initial_alignment_) {
+        if (std::abs(lookahead_heading_error_) < max_lookahead_heading_error) {
+            initial_alignment_ = true;
+        }
+        else {
+            boundvel(0.0);
+            boundomega(-kp_adjust_cte * lookahead_heading_error_);
             ROS_INFO("Adjusting Lookahead Heading Error: %f", lookahead_heading_error_);
-            bounded = true;
-        } else {
-            ROS_INFO("Adjusting Cross Track Error: %f", cross_track_error_);
-            boundvel(cross_track_error_ * kp_adjust_cte);
-            bounded = true;
+            bounded_vel = true;
+            bounded_omega = true;
+            publish_cmd_vel();
+            return false
         }
     }
+
+    // // If CTE high, focus on moving to lookahead
+    // if (std::abs(cross_track_error_) > max_cte) {          
+        
+    //     if (std::abs(lookahead_heading_error_) > max_lookahead_heading_error) {
+    //         boundvel(0.0);
+    //         // boundomega(kp_adjust_cte * lookahead_heading_error_);
+    //         ROS_INFO("Adjusting Lookahead Heading Error: %f", lookahead_heading_error_);
+    //         bounded = true;
+    //     } else {
+    //         ROS_INFO("Adjusting Cross Track Error: %f", cross_track_error_);
+    //         boundvel(cross_track_error_ * kp_adjust_cte);
+    //         bounded = true;
+    //     }
+    // }
+
 
     // Call DWA controller
     DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
@@ -397,10 +413,11 @@ bool PreviewController::run_control(bool is_last_goal) {
     else 
     // Call preview Controller
     {
-        if (!bounded)
+        if (!bounded_vel)
             // Increase vel to the target vel
             boundvel(linear_velocity_);
-        heading_error_ = - robot_theta + current_path[targetid].theta;
+        // heading_error_ = robot_theta - current_path[targetid].theta; #Check difference with below line
+        heading_error_ =  lookahead_heading_error_;
         if (heading_error_ > M_PI) {
             heading_error_ -= 2 * M_PI;
         } else if (heading_error_ < -M_PI) {
@@ -424,6 +441,13 @@ bool PreviewController::run_control(bool is_last_goal) {
         ROS_INFO("Preview Control: v = %f, omega = %f", v_, omega_);
     }
 
+    if(!bounded_omega)
+        boundomega(omega_);
+   
+
+    if(!bounded_vel)
+        boundvel(v_);
+    
     // --- PUBLISH CURRENT VELOCITY ---
     std_msgs::Float64 v_msg;
     v_msg.data = v_;
@@ -551,7 +575,8 @@ void PreviewController::publish_path() {
     path_msg.header.stamp = ros::Time::now();
     path_msg.header.frame_id = "odom";
     
-    for (const auto& waypoint : current_path) {
+    for (int i = targetid; i < current_path.size(); ++i) {
+        const auto& waypoint = current_path[i];
         geometry_msgs::PoseStamped pose;
         pose.header.stamp = ros::Time::now();
         pose.header.frame_id = "odom";
