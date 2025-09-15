@@ -1,0 +1,58 @@
+preview_controller:
+  # Basic control parameters
+  linear_velocity: 0.3
+  preview_dt: 0.1
+  
+  # Velocity and acceleration limits
+  max_vel: 0.3
+  max_omega: 0.4
+  vel_acc: 0.5
+  omega_acc: 0.4
+  
+  # Robot physical properties
+  robot_radius: 0.5
+  lookahead_distance: 0.5
+  
+  # Error thresholds
+  max_cte: 1.5
+  max_lookahead_heading_error: 0.2
+  goal_distance_threshold: 0.2
+  
+  # Control tuning parameters
+  preview_loop_thresh: 0.000001
+
+  # P gain to adjust high CTE
+  kp_adjust_cte: 2.0
+  
+  # Collision avoidance coefficients, experiment with this
+  collision_robot_coeff: 2.0
+  collision_obstacle_coeff: 2.0
+  
+  # LQR controller parameters
+  # Q0 refers to cost for ey, Q1 refers to cost for etheta, Q2 refers to cost for etheta_dot
+  # Increase coefficient if you want to reduce particular error term
+  Q_params: [5.0, 6.0, 5.0]
+
+  # R refers to cost for omega
+  # Decrease R if you want omega to change faster, it was 1 while testing, try with smaller and smaller values
+  R: 0.01
+  
+  # DWA controller shared parameters
+  min_speed: 0.0
+  max_speed: 0.3
+  dt_dwa: 0.1
+
+dwa_controller:
+  # Prediction and sampling parameters
+  predict_time: 2.0
+
+  # Smaller samples means faster computation
+  vx_samples: 3
+  omega_samples: 5
+  
+  # Cost function weights
+  path_distance_bias: 20.0
+  goal_distance_bias: 0.5
+  occdist_scale: 10.0
+  speed_ref_bias: 0.005
+  away_bias: 20.0
