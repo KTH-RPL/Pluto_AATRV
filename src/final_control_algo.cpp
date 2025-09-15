@@ -30,7 +30,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
-    nh_.param("preview_controller/linear_velocity", linear_velocity_, 1.0);
+    nh_.param("preview_controller/linear_velocity", linear_velocity_, 0.4);
 
     // Frequency of the controller
     nh_.param("preview_controller/preview_dt", dt_, 0.1);
