@@ -373,7 +373,7 @@ bool PreviewController::run_control(bool is_last_goal) {
             bounded_vel = true;
             bounded_omega = true;
             publish_cmd_vel();
-            return false
+            return false;
         }
     }
 

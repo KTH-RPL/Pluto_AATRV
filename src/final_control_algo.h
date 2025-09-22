@@ -207,6 +207,6 @@ class dwa_controller {
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
 
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
-        double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height);
+        double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
 
 };
