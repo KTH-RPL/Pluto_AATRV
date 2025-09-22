@@ -4,6 +4,8 @@ import matplotlib.animation as animation
 from scipy.linalg import solve_discrete_are
 import random
 from scipy.ndimage import gaussian_filter1d
+# *** CHANGED ***: need 2D gaussian filter
+from scipy.ndimage import gaussian_filter  # *** CHANGED ***
 
 class PreviewController:
     def __init__(self, v=0.8, dt=0.05, preview_steps=20):
@@ -213,6 +215,13 @@ class CarSimulation:
         self.dt_dwa = 0.1
         self.max_omega = 1.2
         self.obstacles = self.generate_obstacles()
+        # *** CHANGED ***: costmap parameters
+        self.costmap_resolution = 0.1  # meters per cell (*** CHANGED ***)
+        self.costmap_margin = 5.0      # meters beyond world extents to include (*** CHANGED ***)
+        # *** CHANGED ***: build costmap from obstacles with inflation
+        self.build_costmap()  # *** CHANGED ***
+        # *** CHANGED END ***
+
         self.live_plots_enabled = True
         if self.live_plots_enabled:
             self.live_fig, self.live_axes = plt.subplots(4, 1, figsize=(4, 4), sharex=True)
@@ -221,7 +230,9 @@ class CarSimulation:
     def update(self, frame):
         if len(self.obstacles) != 0:
             self.update_obstacles()
-        
+            # *** CHANGED ***: rebuild costmap when dynamic obstacles move (minimal update)
+            self.build_costmap()  # *** CHANGED ***
+
         while(self.distancecalc(self.x, self.y, self.x_path[self.target_idx], self.y_path[self.target_idx]) 
             and self.target_idx < self.max_target_idx):
             self.target_idx += 1
@@ -282,6 +293,17 @@ class CarSimulation:
         for obs in self.obstacles:
             circle = plt.Circle((obs['x'], obs['y']), obs['radius'], color='k', fill=True)
             self.ax_path.add_patch(circle)
+
+        # *** CHANGED ***: optional plotting of costmap background (semi-transparent)
+        try:
+            # draw costmap as image (centered)
+            extent = [self.costmap_origin_x, self.costmap_origin_x + self.costmap_width * self.costmap_resolution,
+                      self.costmap_origin_y, self.costmap_origin_y + self.costmap_height * self.costmap_resolution]
+            self.ax_path.imshow(self.costmap.T, origin='lower', extent=extent, alpha=0.4)
+        except Exception:
+            pass
+        # *** CHANGED END ***
+
         arrow_len = 1.0
         dx = arrow_len * np.cos(self.theta)
         dy = arrow_len * np.sin(self.theta)
@@ -327,7 +349,7 @@ class CarSimulation:
         # obstacles.append({'x': 1.33, 'y': 4.1, 'vx': -0.2, 'vy':-0.6, 'radius': 1.2})
         # obstacles.append({'x': 0.9, 'y': 5.6, 'vx': -0.3, 'vy':-0.8, 'radius': 0.5})
         obstacles.append({'x': 5, 'y': 0, 'vx': -0.3, 'vy':-0.5, 'radius': 1.2})
-        obstacles.append({'x': 1, 'y': 2.5, 'vx': -0.0, 'vy':-0.0, 'radius': 1.4})
+        obstacles.append({'x': 1, 'y': 2.5, 'vx': 0.0, 'vy':0.0, 'radius': 1.5})
         return obstacles
     
     def distancecalc(self, x1, y1, x2, y2):
@@ -401,39 +423,51 @@ class CarSimulation:
             traj.append([x, y,theta])
         return np.array(traj)
     
-    def calc_obstacle_cost(self, traj):        
+    # *** CHANGED ***: replace calc_obstacle_cost to sample costmap along trajectory
+    def calc_obstacle_cost(self, traj):
+        """
+        New cost: sample self.costmap along the trajectory and accumulate cost.
+        Also still compute min distance to actual circular obstacles for thresholds/backwards compatibility.
+        """
+        if not hasattr(self, 'costmap'):
+            # fallback to old behavior (should not happen)
+            return 0, 0, float('inf')
+
+        # Sample costmap at each trajectory point (bilinear interpolation)
+        cost_sum = 0.0
+        for pt in traj:
+            x_pt, y_pt = pt[0], pt[1]
+            cost_sum += self.get_cost_at(x_pt, y_pt)
+
+        # Normalize cost a bit by number of points
+        cost_avg = cost_sum / max(1, len(traj))
+
+        # find closest obstacle index and actual min distance (retain from earlier approach)
         min_dist_actual = float('inf')
-        
         obsi = 0
-        point = traj[-1][:2]  
-        obs_cost = 0
         for i, obs in enumerate(self.obstacles):
-            dist = np.sqrt((point[0] - obs['x'])**2 + (point[1] - obs['y'])**2)
-            collision_dist = 2*self.robot_radius + obs['radius']
-            if dist < collision_dist:
-                dist_metric = 1 - dist / (collision_dist + 0.01)
-            else:
-                dist_metric = 0       
+            # distance to obstacle center
+            dx = traj[-1][0] - obs['x']
+            dy = traj[-1][1] - obs['y']
+            dist = np.hypot(dx, dy)
             if dist < min_dist_actual:
                 min_dist_actual = dist
                 obsi = i
-            obs_cost += dist_metric
-        return 500*obs_cost, obsi, min_dist_actual
-        
+
+        # scale cost so it can be combined with other DWA costs (tunable)
+        scaled_cost = 200.0 * cost_avg  # *** CHANGED: scaling factor ***
+        return scaled_cost, obsi, min_dist_actual
+    # *** CHANGED END ***
+
     def away_from_obstacle_cost(self, traj):
-        total_cost = 0.0
-        for point in traj:
-            x, y = point[0], point[1]
-            for obs in self.obstacles:
-                ox, oy = obs['x'], obs['y']
-                radius = obs['radius'] + self.robot_radius
-                dist = np.sqrt((x - ox)**2 + (y - oy)**2)
-                if dist < radius:
-                    return 1e6  # collision, very high cost immediately
-                total_cost += 1 / dist  # smaller distance increases cost
-        # normalize by trajectory length so cost is independent of traj length
-        total_cost /= len(traj)
-        return total_cost
+        cost = 0.0
+        for pt in traj:
+            x, y = pt[0], pt[1]
+            # costmap value
+            c = self.get_cost_at(x, y)
+            # Exponential penalty for high-cost areas
+            cost += np.exp(5 * c)  # 5 is tunable
+        return cost / len(traj)
     
     def calc_speed_ref_cost(self, v):
         return 1*np.abs((v - self.ref_velocity)) 
@@ -477,13 +511,124 @@ class CarSimulation:
         plt.show()
 
      
-        
+    # *** CHANGED ***: new costmap utilities
+    def build_costmap(self):
+        """
+        Build a 2D costmap raster from current self.obstacles.
+        Rasterizes obstacles as circles, applies Gaussian blur for inflation,
+        computes gradient field implicitly by allowing the cost to 'leak' from obstacle boundaries.
+        """
+        # Determine world extents from path and obstacles
+        all_x = np.concatenate([self.x_path, np.array([o['x'] for o in self.obstacles])])
+        all_y = np.concatenate([self.y_path, np.array([o['y'] for o in self.obstacles])])
+        min_x, max_x = all_x.min() - self.costmap_margin, all_x.max() + self.costmap_margin
+        min_y, max_y = all_y.min() - self.costmap_margin, all_y.max() + self.costmap_margin
+
+        # grid size
+        width = max_x - min_x
+        height = max_y - min_y
+        nx = int(np.ceil(width / self.costmap_resolution))
+        ny = int(np.ceil(height / self.costmap_resolution))
+        # Ensure at least 10x10
+        nx = max(nx, 10)
+        ny = max(ny, 10)
+
+        # store origin and dims for mapping
+        self.costmap_origin_x = min_x
+        self.costmap_origin_y = min_y
+        self.costmap_width = nx
+        self.costmap_height = ny
+        self.costmap_resolution = float(self.costmap_resolution)
+
+        # create empty occupancy (0..1)
+        occ = np.zeros((nx, ny), dtype=float)
+
+        # rasterize obstacles as hard occupancy
+        for obs in self.obstacles:
+            # center in grid coordinates
+            cxg, cyg = self.world_to_grid(obs['x'], obs['y'])
+            rr = int(np.ceil(obs['radius'] / self.costmap_resolution))
+            # draw filled circle
+            x0 = max(0, cxg - rr)
+            x1 = min(nx - 1, cxg + rr)
+            y0 = max(0, cyg - rr)
+            y1 = min(ny - 1, cyg + rr)
+            xs = np.arange(x0, x1 + 1)
+            ys = np.arange(y0, y1 + 1)
+            if xs.size == 0 or ys.size == 0:
+                continue
+            X, Y = np.meshgrid(xs, ys, indexing='xy')
+            d2 = (X - cxg)**2 + (Y - cyg)**2
+            mask = d2 <= (rr + 0.5)**2
+            occ[X[mask], Y[mask]] = 1.0  # set occupancy
+
+        # apply gaussian to inflate/soften edges -> costmap
+        # sigma in cells; larger sigma => larger inflation
+        sigma_m = 0.6  # meters of effective inflation (tunable)
+        sigma_cells = max(1.0, sigma_m / self.costmap_resolution)
+        costmap = gaussian_filter(occ, sigma=sigma_cells)
+        # normalize to 0..1
+        if costmap.max() > 0:
+            costmap = costmap / costmap.max()
+
+        # optionally compute gradient field and add small leakage from edges:
+        gx, gy = np.gradient(costmap)
+        grad_mag = np.hypot(gx, gy)
+        # combine base costmap and gradient (leaking from boundaries) to accent edges
+        combined = costmap + 0.5 * grad_mag  # 0.5 factor controls leakage strength
+        if combined.max() > 0:
+            combined = combined / combined.max()
+
+        self.costmap = combined  # store final costmap
+    # *** CHANGED END ***
+
+    def world_to_grid(self, x_w, y_w):
+        """
+        Convert world coordinates to integer grid indices (cxg, cyg).
+        (0,0) in world corresponds to self.costmap_origin_x/y.
+        """
+        gx = int(np.round((x_w - self.costmap_origin_x) / self.costmap_resolution))
+        gy = int(np.round((y_w - self.costmap_origin_y) / self.costmap_resolution))
+        # clip
+        gx = int(np.clip(gx, 0, self.costmap_width - 1))
+        gy = int(np.clip(gy, 0, self.costmap_height - 1))
+        return gx, gy
+
+    def get_cost_at(self, x_w, y_w):
+        """
+        Bilinear interpolation of costmap at given world coordinates.
+        Returns value in [0,1].
+        """
+        # map to fractional grid coords
+        fx = (x_w - self.costmap_origin_x) / self.costmap_resolution
+        fy = (y_w - self.costmap_origin_y) / self.costmap_resolution
+        if fx < 0 or fy < 0 or fx >= self.costmap_width - 1 or fy >= self.costmap_height - 1:
+            # outside map domain, treat as low-cost (or optionally high cost)
+            return 0.0
+        x0 = int(np.floor(fx))
+        y0 = int(np.floor(fy))
+        dx = fx - x0
+        dy = fy - y0
+
+        # fetch four neighbors
+        v00 = self.costmap[x0, y0]
+        v10 = self.costmap[x0 + 1, y0]
+        v01 = self.costmap[x0, y0 + 1]
+        v11 = self.costmap[x0 + 1, y0 + 1]
+
+        # bilinear interp
+        v0 = v00 * (1 - dx) + v10 * dx
+        v1 = v01 * (1 - dx) + v11 * dx
+        v = v0 * (1 - dy) + v1 * dy
+        return float(v)
+    # *** CHANGED END ***
+
     def dwa_control(self):
         path_distance_bias = 20.0     
-        goal_distance_bias = 0.5      
+        goal_distance_bias = 0.5     
         occdist_scale = 20           
-        speed_ref_bias = 10          
-        away_bias = 0.01          
+        speed_ref_bias = 10         
+        away_bias = 50          
         vx_samples = 3                
         omega_samples = 5             
 
@@ -500,23 +645,23 @@ class CarSimulation:
                 lookahead_cost = self.lookahead_cost(traj, self.x_path[self.target_idx], self.y_path[self.target_idx])
                 speed_ref_cost = self.calc_speed_ref_cost(v)
                 obs_cost, obsi, mindist = self.calc_obstacle_cost(traj)
-                if obs_cost > 0:
+                if obs_cost > 100:
                     speed_ref_cost = 0
                 away_cost = self.away_from_obstacle_cost(traj)
 
                 total_cost = (
-                    path_distance_bias * path_cost +
+                    # path_distance_bias * path_cost +
                     goal_distance_bias * lookahead_cost +
                     occdist_scale * obs_cost +
-                    speed_ref_bias * speed_ref_cost  +
-                    50 * away_cost
+                    speed_ref_bias * speed_ref_cost  
+                    # away_bias * away_cost
                 )
 
-                # print(
-                #     f"total_cost={total_cost:.3f}, v={v:.2f}, omega={omega:.2f}, "
-                #     f"path_cost={path_cost:.2f}, lookahead_cost={lookahead_cost:.2f}, "
-                #     f"speed_ref_cost={speed_ref_cost:.2f}, obs_cost={obs_cost}, away_cost={away_cost:.2f}, "
-                # )
+                print(
+                    f"total_cost={total_cost:.3f}, v={v:.2f}, omega={omega:.2f}, "
+                    f"path_cost={path_cost:.2f}, lookahead_cost={lookahead_cost:.2f}, "
+                    f"speed_ref_cost={speed_ref_cost:.2f}, obs_cost={obs_cost}, away_cost={away_cost:.2f}, "
+                )
 
                 if total_cost < min_cost:
                     min_cost = total_cost
