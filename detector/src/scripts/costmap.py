@@ -4,7 +4,7 @@
 import rospy
 from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import MarkerArray
-from geometry_msgs.msg import Point, Pose, Quaternion
+from geometry_msgs.msg import Pose
 
 # Standard Python Imports
 import numpy as np
@@ -20,37 +20,37 @@ class CostmapGeneratorNode:
         costmap_topic = rospy.get_param('~costmap_topic', '/local_costmap')
 
         # Costmap properties
-        self.map_size_meters = rospy.get_param('~map_size', 20.0)    # 20m x 20m
-        self.resolution = rospy.get_param('~resolution', 0.1)       # 0.1m per cell
-        self.robot_radius = rospy.get_param('~robot_radius', 0.7)   # Robot radius for inflation
-        self.map_frame = rospy.get_param('~map_frame', 'base_link') # Costmap is in the robot's frame
+        self.map_size_meters = rospy.get_param('~map_size', 20.0)
+        self.resolution = rospy.get_param('~resolution', 0.1)
+        self.map_frame = rospy.get_param('~map_frame', 'base_link')
+        
+        # --- NEW: Gradient Inflation Parameters ---
+        # The radius at which cost is at its maximum (lethal cost)
+        self.inflation_radius = rospy.get_param('~inflation_radius', 0.7)
+        # The radius at which the cost gradient ends (cost becomes zero)
+        self.gradient_end_radius = rospy.get_param('~gradient_end_radius', 1.2)
+        # Max cost value in the OccupancyGrid (0-100)
+        self.max_cost = rospy.get_param('~max_cost', 100)
 
-        # --- Pre-calculate map properties ---
+        # --- Pre-calculate map and gradient properties ---
         self.width_cells = int(self.map_size_meters / self.resolution)
         self.height_cells = int(self.map_size_meters / self.resolution)
-        
-        # The origin of the map in the base_link frame.
-        # Since the map is centered on the robot, the origin (bottom-left corner)
-        # is at (-map_size/2, -map_size/2).
         self.origin_x = -self.map_size_meters / 2.0
         self.origin_y = -self.map_size_meters / 2.0
         
-        # --- Create the inflation kernel once ---
-        # This is more efficient than creating it in every callback.
-        inflation_radius_cells = int(self.robot_radius / self.resolution)
-        # Using an elliptical kernel is a good approximation for a circle
-        self.inflation_kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (2 * inflation_radius_cells + 1, 2 * inflation_radius_cells + 1)
-        )
+        # Calculate the width of the gradient in meters
+        self.gradient_width = self.gradient_end_radius - self.inflation_radius
+        if self.gradient_width <= 0:
+            rospy.logwarn("Gradient end radius must be greater than inflation radius. Disabling gradient.")
+            self.gradient_width = 0 # Disable gradient if params are invalid
 
         # --- ROS Subscriber and Publisher ---
         self.obstacle_sub = rospy.Subscriber(obstacle_topic, MarkerArray, self.obstacles_callback, queue_size=1)
         self.costmap_pub = rospy.Publisher(costmap_topic, OccupancyGrid, queue_size=1)
 
-        rospy.loginfo("Costmap Generator Node initialized.")
-        rospy.loginfo(f"Listening for obstacles on: {obstacle_topic}")
-        rospy.loginfo(f"Publishing costmap on: {costmap_topic}")
+        rospy.loginfo("Costmap Generator Node with Gradient Inflation initialized.")
+        rospy.loginfo(f"Inflation Radius (max cost): {self.inflation_radius}m")
+        rospy.loginfo(f"Gradient End Radius (zero cost): {self.gradient_end_radius}m")
 
     def world_to_map(self, wx, wy):
         """Converts world coordinates (in meters, in map_frame) to map coordinates (in cells)."""
@@ -59,37 +59,69 @@ class CostmapGeneratorNode:
         return mx, my
 
     def obstacles_callback(self, marker_array_msg):
-        """Processes obstacle markers and generates the costmap."""
+        """Processes obstacle markers and generates the gradient costmap."""
         try:
-            # 1. Create a fresh, empty grid for this timestep
-            # OccupancyGrid values: 0=free, 100=occupied
-            costmap_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
+            # 1. Create a grid to mark the raw obstacle locations
+            obstacle_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
 
-            # 2. Rasterize (draw) each obstacle polygon onto the grid
+            # 2. Rasterize each obstacle polygon onto the grid
             for marker in marker_array_msg.markers:
                 if marker.action != marker.ADD or marker.type != marker.LINE_STRIP or len(marker.points) < 3:
                     continue
 
-                # Convert polygon points from world coordinates to map cell coordinates
                 polygon_points_map = []
                 for world_point in marker.points:
                     mx, my = self.world_to_map(world_point.x, world_point.y)
-                    # Ensure points are within map bounds
                     if 0 <= mx < self.width_cells and 0 <= my < self.height_cells:
                         polygon_points_map.append([mx, my])
                 
                 if len(polygon_points_map) < 3:
                     continue
+                
+                # Fill the polygon area. We'll mark it with 255 to distinguish from free space (0).
+                cv2.fillPoly(obstacle_grid, [np.array(polygon_points_map, dtype=np.int32)], 255)
 
-                # Use OpenCV to fill the polygon with the 'occupied' value (100)
-                cv2.fillPoly(costmap_grid, [np.array(polygon_points_map, dtype=np.int32)], 100)
+            # 3. Use Distance Transform to calculate the distance from every cell to the nearest obstacle
+            # We want distances from non-obstacle points to obstacle points.
+            # `distanceTransform` computes distance from a zero pixel to the nearest non-zero pixel.
+            # So, we invert our grid: obstacles become 0, free space becomes 255.
+            dist_transform_input = cv2.bitwise_not(obstacle_grid)
+            
+            # Calculate Euclidean distance for each pixel to the nearest zero (our obstacles)
+            # The result is a float32 array where each value is the distance in pixels.
+            dist_pixels = cv2.distanceTransform(dist_transform_input, cv2.DIST_L2, 5)
 
-            # 3. Inflate the obstacles by the robot's radius
-            # cv2.dilate grows the white areas (obstacles).
-            inflated_grid = cv2.dilate(costmap_grid, self.inflation_kernel)
+            # Convert pixel distances to meter distances
+            dist_meters = dist_pixels * self.resolution
+            
+            # 4. Create the final costmap with the gradient
+            # Initialize with zeros (free space)
+            costmap_grid = np.zeros_like(dist_meters, dtype=np.uint8)
+            
+            # Apply cost function based on distance
+            # Zone 1: Lethal cost (within inflation_radius)
+            lethal_mask = dist_meters <= self.inflation_radius
+            costmap_grid[lethal_mask] = self.max_cost
+            
+            # Zone 2: Gradient cost (between inflation_radius and gradient_end_radius)
+            if self.gradient_width > 0:
+                gradient_mask = (dist_meters > self.inflation_radius) & (dist_meters < self.gradient_end_radius)
+                
+                # Get distances only in the gradient zone
+                gradient_distances = dist_meters[gradient_mask]
+                
+                # Linearly map distance to cost:
+                # Cost = Max_Cost * (1 - (current_dist - inflation_radius) / gradient_width)
+                slope = -self.max_cost / self.gradient_width
+                intercept = self.max_cost * (self.gradient_end_radius / self.gradient_width)
+                gradient_costs = slope * gradient_distances + intercept
 
-            # 4. Publish the OccupancyGrid message
-            self.publish_costmap(inflated_grid)
+                costmap_grid[gradient_mask] = gradient_costs.astype(np.uint8)
+
+            # Zone 3 (outside gradient_end_radius) is already 0.
+
+            # 5. Publish the resulting OccupancyGrid
+            self.publish_costmap(costmap_grid)
 
         except Exception as e:
             rospy.logerr(f"Error in costmap generation: {e}")
@@ -99,26 +131,16 @@ class CostmapGeneratorNode:
         msg = OccupancyGrid()
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = self.map_frame
-
-        # --- Fill in the metadata (info) ---
         msg.info.resolution = self.resolution
         msg.info.width = self.width_cells
         msg.info.height = self.height_cells
-        
-        # Set the origin of the map
         msg.info.origin = Pose()
         msg.info.origin.position.x = self.origin_x
         msg.info.origin.position.y = self.origin_y
         msg.info.origin.position.z = 0.0
-        msg.info.origin.orientation.w = 1.0 # No rotation
-
-        # --- Fill in the map data ---
-        # The data is a 1D array in row-major order.
-        # OccupancyGrid data is int8, so we cast our uint8 grid.
+        msg.info.origin.orientation.w = 1.0
         msg.data = grid_data.flatten().astype(np.int8).tolist()
-
         self.costmap_pub.publish(msg)
-
 
 def main():
     try:
