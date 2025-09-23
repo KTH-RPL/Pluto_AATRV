@@ -5,7 +5,7 @@ import rospy
 from sensor_msgs.msg import Image
 from visualization_msgs.msg import Marker, MarkerArray
 from cv_bridge import CvBridge, CvBridgeError
-
+from geometry_msgs.msg import Point
 # Standard Python Imports
 import cv2
 import numpy as np
@@ -129,60 +129,97 @@ class UVDetector:
                 self.bounding_box_U.append(merged_box.bb)
 
     def extract_3Dbox(self):
-        self.box3Ds_camera_frame = []
-        if not hasattr(self, 'U_map') or not hasattr(self, 'bounding_box_U'): return
-        depth_resize = cv2.resize(self.depth, (0, 0), fx=self.col_scale, fy=1, interpolation=cv2.INTER_NEAREST)
+        """
+        NEW VERSION: Extracts oriented 2D polygons in the camera frame.
+        """
+        self.polygons_camera_frame = []
+        if not hasattr(self, 'U_map') or not hasattr(self, 'bounding_box_U') or not self.bounding_box_U:
+            return
+
         histSize = self.depth.shape[0] / self.row_downsample
         if histSize == 0: return
         bin_width = math.ceil((self.max_dist - self.min_dist) / histSize)
         if bin_width == 0: return
-        num_check = 15
-        depth_vals_scaled = (depth_resize / self.depth_scale) * 1000.0
-        for bb in self.bounding_box_U:
-            x, y, width, height = bb
-            depth_in_near = (y * bin_width + self.min_dist)
-            depth_of_depth = height * bin_width
-            depth_in_far = depth_of_depth * 1 + depth_in_near
-            patch = depth_vals_scaled[:, x : x + width]
-            valid_depth_mask = (patch >= depth_in_near) & (patch <= depth_in_far)
-            if not np.any(valid_depth_mask): continue
-            consecutive_sum = np.lib.stride_tricks.sliding_window_view(valid_depth_mask, num_check, axis=0).sum(axis=2)
-            valid_sequences = consecutive_sum == num_check
-            if not np.any(valid_sequences): continue
-            row_indices, _ = np.where(valid_sequences)
-            y_up = np.min(row_indices)
-            y_down = np.max(row_indices) + num_check
-            if y_down <= y_up: continue
-            im_frame_x = (x + width / 2) / self.col_scale
-            im_frame_x_width = width / self.col_scale
-            Y_w = (depth_in_near + depth_in_far) / 2
-            im_frame_y = (y_down + y_up) / 2
-            im_frame_y_width = y_down - y_up
-            if im_frame_y_width <= 0: continue
-            curr_box = {
-                'x': (im_frame_x - self.px) * Y_w / self.fx, 'y': (im_frame_y - self.py) * Y_w / self.fy, 'z': Y_w,
-                'x_width': im_frame_x_width * Y_w / self.fx, 'y_width': im_frame_y_width * Y_w / self.fy,
-                'z_width': depth_in_far - depth_in_near
-            }
-            for key in curr_box: curr_box[key] /= 1000.0
-            self.box3Ds_camera_frame.append(curr_box)
+
+        # We need the labeled U-map to find the points for each blob
+        u_min = self.threshold_point * self.row_downsample
+        interest_mask = self.U_map >= u_min
+        labels, num_labels = ndi.label(interest_mask, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]))
+
+        for i in range(1, num_labels + 1):
+            # Get all the (row, col) points for the current blob
+            points = np.argwhere(labels == i)
+            if len(points) < self.min_length_line: # Filter small blobs
+                continue
+
+            # Invert points for OpenCV (x, y) convention -> (col, row)
+            points_for_cv = points[:, [1, 0]].astype(np.float32)
+
+            # Find the minimum area oriented rectangle
+            # rect is ((center_x, center_y), (width, height), angle)
+            rect = cv2.minAreaRect(points_for_cv)
+            
+            # Get the 4 corner points of the rectangle
+            # box_points are in (col, row) format
+            box_points_uv = cv2.boxPoints(rect)
+
+            # Now, project these 4 corners into 3D camera space
+            polygon_3d = []
+            for u, v_depth in box_points_uv:
+                # v_depth is the row in U-Map, representing depth
+                # u is the column in U-Map, representing horizontal angle
+                
+                # Convert back to real-world depth (Z in camera frame)
+                Z = (v_depth * bin_width + self.min_dist) / 1000.0 # in meters
+
+                # Convert back to original image column
+                u_image = u / self.col_scale
+                
+                # Use pinhole model to find X
+                # X = (u_image - px) * Z / fx
+                X = (u_image - self.px) * Z / self.fx
+                
+                # For the 2D footprint, we assume the obstacle is on the ground plane.
+                # A more complex method would find the actual Y height from the depth image,
+                # but for navigation, the ground-projected footprint is what matters most.
+                # Let's find the camera's height above ground from the transform for a simple projection.
+                # Assuming robot frame Z=0 is ground. The camera's Z position in the robot frame
+                # corresponds to its height.
+                cam_pos_in_robot = np.linalg.inv(self.body2CamDepth) @ np.array([0,0,0,1])
+                cam_height = cam_pos_in_robot[2] # This is a simplification
+                
+                # Project onto a plane slightly below the camera
+                # Y = (v_image - py) * Z / fy
+                # Here we use a simplification: Y is derived from camera height.
+                # Let's assume the points are on the ground relative to the camera.
+                # A robust way is to find the ground plane, but we can approximate.
+                # For this example, we'll set Y to 0, which projects the obstacle
+                # footprint onto the camera's horizontal plane. When transformed to the
+                # robot frame, this will approximate the ground footprint if the camera
+                # is not heavily pitched.
+                Y = 0 # Simplified: Assumes obstacle base is level with camera center
+                      # This is a weak point, but better than AABB.
+
+                polygon_3d.append([X, Y, Z, 1.0])
+            
+            self.polygons_camera_frame.append(np.array(polygon_3d))
 
     def transform_boxes_to_robot_frame(self):
-        for box_cam in self.box3Ds_camera_frame:
-            dx, dy, dz = box_cam['x_width'] / 2, box_cam['y_width'] / 2, box_cam['z_width'] / 2
-            corners_cam = np.array([
-                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']-dz, 1],[box_cam['x']+dx, box_cam['y']-dy, box_cam['z']-dz, 1],
-                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']-dz, 1],[box_cam['x']+dx, box_cam['y']+dy, box_cam['z']-dz, 1],
-                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']+dz, 1],[box_cam['x']+dx, box_cam['y']-dy, box_cam['z']+dz, 1],
-                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']+dz, 1],[box_cam['x']+dx, box_cam['y']+dy, box_cam['z']+dz, 1]
-            ])
-            corners_robot = (self.body2CamDepth @ corners_cam.T).T
-            min_coords, max_coords = np.min(corners_robot[:,:3], axis=0), np.max(corners_robot[:,:3], axis=0)
-            center_robot, size_robot = (min_coords + max_coords) / 2, max_coords - min_coords
-            self.box3Ds_robot_frame.append({
-                'x': center_robot[0], 'y': center_robot[1], 'z': center_robot[2],
-                'x_width': size_robot[0], 'y_width': size_robot[1], 'z_width': size_robot[2]
-            })
+        """
+        NEW VERSION: Transforms the 4 corners of each polygon to the robot frame.
+        """
+        self.box3Ds_robot_frame = [] # This will now store lists of 4 points
+        if not hasattr(self, 'polygons_camera_frame'):
+            return
+            
+        for poly_cam in self.polygons_camera_frame:
+            # poly_cam is a 4x4 array (each row is [X, Y, Z, 1])
+            # Transform all 4 points at once
+            poly_robot = (self.body2CamDepth @ poly_cam.T).T
+            
+            # We only need the 2D footprint for the checker (X, Y)
+            footprint_2d = poly_robot[:, :2]
+            self.box3Ds_robot_frame.append(footprint_2d)
 
 
 # ==============================================================================
@@ -228,7 +265,7 @@ class UvDetectorNodeROS1:
 
     def depth_callback(self, msg):
         """Main callback to process incoming depth images."""
-        try
+        try:
             # Use cv_bridge to convert ROS Image message to OpenCV image
             depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
         except CvBridgeError as e:
@@ -250,46 +287,50 @@ class UvDetectorNodeROS1:
             traceback.print_exc()
 
 
-    def create_obstacle_markers(self, boxes, header):
-        """Converts a list of 3D boxes into a MarkerArray of 2D flat rectangles (CUBES)."""
+    def create_obstacle_markers(self, polygons, header):
+        """Converts a list of 4-point polygons into a MarkerArray of LINE_STRIPs."""
         marker_array = MarkerArray()
         
-        # This special marker deletes all old markers in this namespace.
         delete_marker = Marker()
         delete_marker.header.frame_id = self.output_frame_id
         delete_marker.action = Marker.DELETEALL
         marker_array.markers.append(delete_marker)
 
-        for i, box in enumerate(boxes):
+        for i, footprint in enumerate(polygons):
             marker = Marker()
             marker.header = header
-            marker.header.frame_id = self.output_frame_id # Ensure correct frame
+            marker.header.frame_id = self.output_frame_id
             marker.ns = "uv_obstacles"
             marker.id = i
-            # *** MODIFICATION: Use CUBE instead of CYLINDER for a rectangular shape ***
-            marker.type = Marker.CUBE
+            # *** MODIFICATION: Use LINE_STRIP to draw a polygon ***
+            marker.type = Marker.LINE_STRIP
             marker.action = Marker.ADD
 
-            # Position is the center of the box
-            marker.pose.position.x = box['x']
-            marker.pose.position.y = box['y']
-            marker.pose.position.z = 0.05  # Place rectangle slightly above the ground plane
-            # The boxes are axis-aligned in the output frame, so no rotation is needed.
-            marker.pose.orientation.w = 1.0
+            # A LINE_STRIP connects a series of points
+            marker.points = []
+            for point_xy in footprint:
+                p = Point()
+                p.x = point_xy[0]
+                p.y = point_xy[1]
+                p.z = 0.05  # Place slightly above the ground plane
+                marker.points.append(p)
+            
+            # Add the first point again to close the loop
+            p_first = Point()
+            p_first.x = footprint[0][0]
+            p_first.y = footprint[0][1]
+            p_first.z = 0.05
+            marker.points.append(p_first)
 
-            # *** MODIFICATION: Scale is now the width/height of the box + safety buffer ***
-            # This provides a much tighter fit than a circle for long objects.
-            marker.scale.x = box['x_width'] + self.safety_buffer
-            marker.scale.y = box['y_width'] + self.safety_buffer
-            marker.scale.z = 0.1  # A small height makes it a flat rectangle
+            # Line width
+            marker.scale.x = 0.05  # Thickness of the line
 
             # Color (e.g., semi-transparent orange)
             marker.color.r = 1.0
             marker.color.g = 0.5
             marker.color.b = 0.0
-            marker.color.a = 0.7
+            marker.color.a = 0.9
 
-            # Lifetime: if a new message isn't received, the marker will disappear
             marker.lifetime = rospy.Duration(0.5)
             
             marker_array.markers.append(marker)
