@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
   visualization_msgs
   nav_msgs
+  actionlib
+  actionlib_msgs
 )
 
 # Find Eigen library
@@ -19,16 +21,21 @@ find_package(Eigen3 REQUIRED)
 catkin_package(
 
 #  LIBRARIES robot_controller
-  CATKIN_DEPENDS roscpp std_msgs geometry_msgs tf tf2 tf2_ros tf2_geometry_msgs visualization_msgs nav_msgs
+  CATKIN_DEPENDS roscpp std_msgs geometry_msgs tf tf2 tf2_ros tf2_geometry_msgs visualization_msgs nav_msgs actionlib actionlib_msgs message_runtime
 #  DEPENDS Eigen3
 )
 
+add_action_files(
+  FILES
+  PlanGlobalPath.action
+  
+)
 # Specify include directories
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
 )
-
+ 
 # Add your executable
 add_executable(control_node
   src/preview_test_alone.cpp
