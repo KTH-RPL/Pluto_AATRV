@@ -1,0 +1,12 @@
+<launch>
+  <!-- EKF node -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_base_link" args="0 0 0 0 0 0 base_link vectornav"/>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom"/>
+
+  <node pkg="odom_plotter" type="odom_baselink_pub.py" name="odom_tf_publisher" output="screen"/>
+  <rosparam file="$(find odom_plotter)/config/ekf_params.yaml" command="load" />
+  <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node" output="screen"/>
+
+  <!-- EKF + raw odometry plotter node -->
+  <node pkg="odom_plotter" type="ekf_odom_plotter.py" name="dual_odom_plotter" output="screen"/>
+</launch>
