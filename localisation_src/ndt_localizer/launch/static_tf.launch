@@ -1,0 +1,14 @@
+<launch>
+
+	<!--node pkg="tf2_ros" type="static_transform_publisher" name="localizer_to_base_link" 
+      args="-0.04894521120494695 -0.03126929060348084 -0.01755515794222565 0.00700329114043367 0.02800900135032654 -3.127079085423343 base_link os_sensor"/-->
+      <!--node pkg="tf2_ros" type="static_transform_publisher" name="base_to_os_sensor"
+      args="-0.04894521120476690 -0.03126929060277820 -0.01755515794190739 0.9998805501718303 -0.005631361428549012 -0.0033964292086203895 0.01398704490483353  base_link os_sensor"/-->
+      <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_os_sensor"
+      args="0 0 0 0 0 0 base_link os_sensor"/>
+
+
+
+
+    <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map" args="0 0 0 0 0 0 world map" />
+</launch>

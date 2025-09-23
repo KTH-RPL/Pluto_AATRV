@@ -1,5 +1,7 @@
 <launch>
-    <!-- Node name and package -->
+    <!-- ================================================================== -->
+    <!-- Original Obstacle Detector Node -->
+    <!-- ================================================================== -->
     <node name="detector" pkg="detector" type="detector.py" output="screen">
 
         <!-- Topic and Frame Parameters -->
@@ -23,7 +25,6 @@
         </rosparam>
 
         <!-- REQUIRED: Camera Intrinsics and Extrinsics -->
-        <!-- These must be provided for the node to run -->
         <rosparam param="depth_intrinsics">[392.1868, 393.0597, 323.7744, 236.8676]</rosparam>
         
         <rosparam param="body_to_camera_depth">[
@@ -32,9 +33,28 @@
             -0.008358,  0.999964,  0.000952,  0.094245,
              0.0,       0.0,       0.0,       1.0
         ]</rosparam>
-
     </node>
 
-    # launch rviz with a specific config file
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/rviz.rviz" output="screen"/>
+    <!-- ================================================================== -->
+    <!-- NEW: Costmap Generator Node -->
+    <!-- ================================================================== -->
+    <node name="costmap_generator" pkg="detector" type="costmap.py" output="screen">
+        <!-- Input/Output Topics -->
+        <param name="obstacle_topic" value="/detected_obstacles"/>
+        <param name="costmap_topic"  value="/local_costmap"/>
+        
+        <!-- Frame ID for the costmap -->
+        <param name="map_frame"      value="base_link"/>
+
+        <!-- Costmap Dimensions and Properties -->
+        <param name="map_size"       value="20.0"/> <!-- meters -->
+        <param name="resolution"     value="0.1"/>  <!-- meters per cell -->
+        <param name="robot_radius"   value="0.7"/>  <!-- meters -->
+    </node>
+
+    <node name="odomtf" pkg="detector" type="odomtf.py" output="screen"/>
+    <!-- ================================================================== -->
+    <!-- RViz Visualization -->
+    <!-- ================================================================== -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" required="true"/>
 </launch>
