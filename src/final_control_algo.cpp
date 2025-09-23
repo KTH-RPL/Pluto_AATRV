@@ -6,7 +6,7 @@
 #include <ros/ros.h>
 #include <limits>
 #include <algorithm>
-#include <threading>
+#include <thread>
 #include <cmath>
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
@@ -26,11 +26,11 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     nh_.param("preview_controller/preview_dt", dt_, 0.1);
 
     // Control params 
-    nh_.param("preview_controller/max_vel", max_vel_, 1.0);
+    nh_.param("preview_controller/max_vel", max_vel_, 0.4);
     nh_.param("preview_controller/max_omega", max_omega_, 0.2);
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
     nh_.param("preview_controller/omega_acc", omega_acc_, 0.4);
-    nh_.param("preview_controller/max_domega", max_domega_, 0.2);
+    // nh_.param("preview_controller/max_domega", max_domega_, 0.2);
 
     // Measure robot_radius and set
     nh_.param("preview_controller/robot_radius", robot_radius_, 0.5);

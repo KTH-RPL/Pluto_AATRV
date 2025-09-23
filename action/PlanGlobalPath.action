@@ -5,4 +5,4 @@ geometry_msgs/PoseArray waypoints
 nav_msgs/Path global_plan
 ---
 # Feedback: Path segment for the most recently processed waypoint
-nav_msgs/Path current_segment
+    nav_msgs/Path current_segment

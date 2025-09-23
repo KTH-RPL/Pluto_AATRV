@@ -1,0 +1,48 @@
+ekf_localization_node:
+  frequency: 50
+  sensor_timeout: 1.0
+  two_d_mode: true
+  print_diagnostics: true
+
+  map_frame: map
+  odom_frame: odom
+  base_link_frame: base_link
+  world_frame: odom
+
+  # Odometry input
+  odom0: /atrv/odom
+  odom0_config: [true, true, false,   # X, Y, Z
+                 false, false, true,  # roll, pitch, yaw
+                 true, true, false]    # vx, vy, vz  <-- MUST ENABLE at least vx/vy
+  odom0_differential: false
+  odom0_relative: false
+
+  # IMU input (relative yaw)
+  imu0: /vectornav/IMU
+  imu0_config: [false, false, false,
+                false, false, true,   # yaw only
+                false, false, false]
+  imu0_relative: true
+  imu0_differential: false
+
+  process_noise_covariance: [0.05, 0, 0, 0, 0, 0,
+                             0, 0.05, 0, 0, 0, 0,
+                             0, 0, 0.05, 0, 0, 0,
+                             0, 0, 0, 0.01, 0, 0,
+                             0, 0, 0, 0, 0.01, 0,
+                             0, 0, 0, 0, 0, 0.01]
+
+  odom0_noise_covariance: [0.01, 0, 0, 0, 0, 0,
+                            0, 0.01, 0, 0, 0, 0,
+                            0, 0, 0.01, 0, 0, 0,
+                            0, 0, 0, 0.01, 0, 0,
+                            0, 0, 0, 0, 0.01, 0,
+                            0, 0, 0, 0, 0, 0.01]
+  imu0_noise_covariance: [0.1, 0, 0, 0, 0, 0,
+                            0, 0.1, 0, 0, 0, 0,
+                            0, 0, 0.1, 0, 0, 0,
+                            0, 0, 0, 0.1, 0, 0,
+                            0, 0, 0, 0, 0.1, 0,
+                            0, 0, 0, 0, 0, 0.1]
+                            
+  
