@@ -36,6 +36,8 @@ struct DWAResult {
     double best_v;
     double best_omega;
     double obs_cost;
+    DWAResult(double best_v_ = 0.0, double best_omega_ = 0.0, double obs_cost_ = 0.0) 
+    : best_v(best_v_), best_omega(best_omega_), obs_cost(obs_cost_) {}
 };
 
 class PreviewController {
