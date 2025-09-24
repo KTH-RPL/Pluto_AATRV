@@ -846,6 +846,10 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             }
         }
     }
-
-    return {best_v, best_omega, obs_cost};
+    // create a DWAResult struct to hold the results
+    DWAResult result;
+    result.best_v = best_v;
+    result.best_omega = best_omega;
+    result.obs_cost = obs_cost;
+    return result;
 }
