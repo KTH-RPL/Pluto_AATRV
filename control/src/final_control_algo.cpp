@@ -738,9 +738,16 @@ double dwa_controller::calc_speed_ref_cost(double v) {
 
 // Calculate cost upon each time step and adds, check on this vs calc_away_from_obstacle_cost
 double dwa_controller::calc_obstacle_cost() {
-    if (traj_list_.empty() || !costmap_received_)
+    if (traj_list_.empty() || !costmap_received_) {
+        if (traj_list_.empty()) {
+            ROS_INFO("ZERO OBS COST | REASON: Traj List Empty");
+        }
+        if (!costmap_received_) {
+            ROS_INFO("ZERO OBS COST | REASON: No costmap received");
+        }
         return 0.0;
-
+    }
+    
     double cost_sum = 0.0;
 
     // Iterate through trajectory 
@@ -761,8 +768,15 @@ double dwa_controller::calc_obstacle_cost() {
 
 // Exponential penalty for moving through high-cost areas, check on this vs calc_obstacle_cost
 double dwa_controller::calc_away_from_obstacle_cost() {
-    if (traj_list_.empty() || !costmap_received_)
+    if (traj_list_.empty() || !costmap_received_) {
+        if (traj_list_.empty()) {
+            ROS_INFO("ZERO Away from obs COST | REASON: Traj List Empty");
+        }
+        if (!costmap_received_) {
+            ROS_INFO("ZERO Away from obs COST | REASON: No costmap received");
+        }
         return 0.0;
+    }
 
     double cost_sum = 0.0;
 
