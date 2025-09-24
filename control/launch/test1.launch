@@ -9,8 +9,8 @@
   <include file="$(find realsense2_camera)/launch/rs_rgbd.launch" />
 
   <!-- Launch Detector -->
-  <include file="$(find detector)/launch/detector.launch" />
+  <include file="$(find detector)/src/launch/detector.launch" />
 <!-- Launch Robot Controller (liveplot.py) -->
-  <node pkg="robot_controller" type="liveplot.py" name="robot_controller_node" output="screen" />
+  <node pkg="robot_controller" type="live_plot.py" name="robot_controller_node" output="screen" />
 
 </launch>
