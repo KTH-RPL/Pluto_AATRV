@@ -11,7 +11,7 @@ preview_controller:
   omega_acc: 0.4
   
   # Switch between DWA and preview control, do ROS_LOG of obstacle cost to find appropriate value
-  obst_cost_thresh: 100.0
+  obst_cost_thresh: 10.0
 
 
   # Robot physical properties

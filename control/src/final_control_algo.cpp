@@ -386,6 +386,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
     double goal_distance = distancecalc(robot_x, robot_y, x_goal, y_goal);
+    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost)
 
     // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
     if (dwa_result.obs_cost > obst_cost_thresh) {
@@ -753,6 +754,7 @@ double dwa_controller::calc_obstacle_cost() {
     }
 
     // Return average cost
+    ROS_INFO("obstacle cost= %f,", 200.0 * cost_sum / std::max(1, static_cast<int>(traj_list_.size())));
     return 200.0 * cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
 }
 
