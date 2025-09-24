@@ -34,7 +34,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
         b1 = pt.composites.Selector(name="Goal Reached Fallback",children=[goal_reached(c_goal),s1])
 
         tree = RSequence(name="Main sequence", children=[b1])
-        super(M1BehaviourTree, self).__init__(tree)
+        super(M2BehaviourTree, self).__init__(tree)
 
         rospy.sleep(5)
         self.setup(timeout=10000)
