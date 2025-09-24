@@ -136,7 +136,7 @@ class PreviewController {
         double omega_acc_bound;
 
         double kp_adjust_cte;
-
+        double obst_cost_thresh;
         double robot_x;
         double robot_y;
         double robot_theta;
@@ -205,8 +205,10 @@ class dwa_controller {
         double calc_heading_cost();
         double calc_path_cost();
         double calc_lookahead_cost();
-        double calc_away_from_obstacle_cost(int obs, double v, double omega);
+        double calc_away_from_obstacle_cost();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
+        bool worldToCostmap(double x, double y, int& mx, int& my, double robot_x, double robot_y);
+        uint8_t getCostmapCost(int mx, int my);
 
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
         double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
