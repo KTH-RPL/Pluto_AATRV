@@ -10,6 +10,8 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/Path.h>
 #include <limits>
+#include <std_msgs/Float64.h> // Include for debug message type
+#include <nav_msgs/OccupancyGrid.h>
 
 struct Waypoint {
     double x;
@@ -33,8 +35,7 @@ class dwa_controller;
 struct DWAResult {
     double best_v;
     double best_omega;
-    int obsi;
-    double obsi_mindist;
+    double obs_cost;
 };
 
 class PreviewController {
@@ -52,6 +53,16 @@ class PreviewController {
         ros::Publisher robot_vel_pub_;
         ros::Publisher lookahead_point_pub_;
         ros::Publisher path_pub_;
+        
+        // --- ADDED DEBUG PUBLISHERS ---
+        ros::Publisher cross_track_error_pub_;
+        ros::Publisher heading_error_pub_;
+        ros::Publisher lookahead_heading_error_pub_;
+        ros::Publisher current_v_pub_;
+        ros::Publisher current_omega_pub_;
+        ros::Publisher path_curvature_pub_;
+        // ------------------------------
+        
         ros::Subscriber robot_pose_sub_;
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
@@ -59,6 +70,7 @@ class PreviewController {
         bool run_control(bool is_last_goal = false);
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
+        void calculate_all_curvatures(); // Calculate curvatures for all path points
         void compute_control(double cross_track_error, double heading_error, double path_curvature);
         double distancecalc(double x1, double y1, double x2, double y2);
         bool chkside(double path_theta);
@@ -70,6 +82,8 @@ class PreviewController {
         void boundvel(double ref_vel);
         void boundomega(double ref_omega);
         int closest_point(double x, double y);
+
+        bool initial_alignment_;
 
         Eigen::Matrix3d A_;
         Eigen::Vector3d B_;
@@ -103,6 +117,7 @@ class PreviewController {
         double preview_loop_thresh;
         double robot_radius_;
         double path_curvature_;
+        std::vector<double> path_curvatures_; // Precomputed curvatures for all path points
         double collision_robot_coeff;
         double collision_obstacle_coeff;
 
@@ -121,7 +136,7 @@ class PreviewController {
         double omega_acc_bound;
 
         double kp_adjust_cte;
-
+        double obst_cost_thresh;
         double robot_x;
         double robot_y;
         double robot_theta;
@@ -140,8 +155,10 @@ class dwa_controller {
         dwa_controller();
         dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points);
         DWAResult dwa_main_control(double x, double y, double theta, double v, double omega);
-        ros::Subscriber obstacle_sub_;
-
+        ros::Subscriber occ_sub_;
+        nav_msgs::OccupancyGrid occ_grid_;
+        void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
+        bool costmap_received_ = false;
 
     private:
         ros::NodeHandle nh_;
@@ -188,10 +205,11 @@ class dwa_controller {
         double calc_heading_cost();
         double calc_path_cost();
         double calc_lookahead_cost();
-        double calc_away_from_obstacle_cost(int obs, double v, double omega);
+        double calc_away_from_obstacle_cost();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
+        bool worldToCostmap(double x, double y, int& mx, int& my, double robot_x, double robot_y);
+        uint8_t getCostmapCost(int mx, int my);
 
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
-        double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height);
-
+        double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
 };
