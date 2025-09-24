@@ -333,7 +333,7 @@ void PreviewController::boundomega(double ref_omega) {
 
 // Changed from NavigationSystem to PreviewController, main control loop
 bool PreviewController::run_control(bool is_last_goal) {
-    ROS_INFO("Running run control")
+    ROS_INFO("Running run control");
     bool bounded_vel = false;
     bool bounded_omega = false;
     robot_x = current_pose.pose.position.x;
@@ -387,7 +387,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
     double goal_distance = distancecalc(robot_x, robot_y, x_goal, y_goal);
-    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost)
+    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost);
 
     // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
     if (dwa_result.obs_cost > obst_cost_thresh) {
