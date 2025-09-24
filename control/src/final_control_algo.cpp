@@ -829,6 +829,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double best_omega = omega;
     int worst_obsi = 0;
     double worst_mindist = std::numeric_limits<double>::infinity();
+    double max_obstacle_cost = 0.0;
     double obs_cost;
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
@@ -854,6 +855,12 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
 
+            if (obs_cost > max_obstacle_cost) {
+                max_obstacle_cost = obs_cost;
+                worst_obsi = j;
+                worst_mindist = std::min(worst_mindist, obs_cost);
+            }
+
             if (total_cost < min_cost) {
                 min_cost = total_cost;
                 best_v = v_sample;
@@ -866,6 +873,6 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     ROS_INFO("obstacle cost DWA %f", obs_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
-    result.obs_cost = obs_cost;
+    result.obs_cost = max_obstacle_cost;
     return result;
 }
