@@ -1,0 +1,16 @@
+<launch>
+  <!-- Launch Pluto -->
+  <include file="$(find pluto)/launch/pluto.launch" />
+
+  <!-- Launch VectorNav -->
+  <include file="$(find vectornav)/launch/vectornav.launch" />
+
+  <!-- Launch RealSense -->
+  <include file="$(find realsense2_camera)/launch/rs_rgbd.launch" />
+
+  <!-- Launch Detector -->
+  <include file="$(find detector)/src/launch/detector.launch" />
+<!-- Launch Robot Controller (liveplot.py) -->
+  <node pkg="robot_controller" type="live_plot.py" name="robot_controller_node" output="screen" />
+
+</launch>
