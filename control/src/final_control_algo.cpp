@@ -815,7 +815,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double best_omega = omega;
     int worst_obsi = 0;
     double worst_mindist = std::numeric_limits<double>::infinity();
-
+    double obs_cost;
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
 
@@ -826,7 +826,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double path_cost = calc_path_cost();
             double lookahead_cost = calc_lookahead_cost();
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
-            double obs_cost = calc_obstacle_cost();
+            obs_cost = calc_obstacle_cost();
 
             // Check this, basically if no collision, can increase speed to move, this may cause issue, increase speed_ref_bias to maneuver around obstacles
             // if (obs_cost > 0) speed_ref_cost = 0;
@@ -849,6 +849,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     }
     // create a DWAResult struct to hold the results
     DWAResult result;
+    ROS_INFO("obstacle cost DWA %f", obs_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
     result.obs_cost = obs_cost;
