@@ -387,7 +387,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
     double goal_distance = distancecalc(robot_x, robot_y, x_goal, y_goal);
-    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost)
+    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost);
 
     // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
     if (dwa_result.obs_cost > obst_cost_thresh) {
@@ -738,9 +738,16 @@ double dwa_controller::calc_speed_ref_cost(double v) {
 
 // Calculate cost upon each time step and adds, check on this vs calc_away_from_obstacle_cost
 double dwa_controller::calc_obstacle_cost() {
-    if (traj_list_.empty() || !costmap_received_)
+    if (traj_list_.empty() || !costmap_received_) {
+        if (traj_list_.empty()) {
+            ROS_INFO("ZERO OBS COST | REASON: Traj List Empty");
+        }
+        if (!costmap_received_) {
+            ROS_INFO("ZERO OBS COST | REASON: No costmap received");
+        }
         return 0.0;
-
+    }
+    
     double cost_sum = 0.0;
 
     // Iterate through trajectory 
@@ -761,8 +768,15 @@ double dwa_controller::calc_obstacle_cost() {
 
 // Exponential penalty for moving through high-cost areas, check on this vs calc_obstacle_cost
 double dwa_controller::calc_away_from_obstacle_cost() {
-    if (traj_list_.empty() || !costmap_received_)
+    if (traj_list_.empty() || !costmap_received_) {
+        if (traj_list_.empty()) {
+            ROS_INFO("ZERO Away from obs COST | REASON: Traj List Empty");
+        }
+        if (!costmap_received_) {
+            ROS_INFO("ZERO Away from obs COST | REASON: No costmap received");
+        }
         return 0.0;
+    }
 
     double cost_sum = 0.0;
 
@@ -815,7 +829,8 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double best_omega = omega;
     int worst_obsi = 0;
     double worst_mindist = std::numeric_limits<double>::infinity();
-
+    double max_obstacle_cost = 0.0;
+    double obs_cost;
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
 
@@ -826,7 +841,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double path_cost = calc_path_cost();
             double lookahead_cost = calc_lookahead_cost();
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
-            double obs_cost = calc_obstacle_cost();
+            obs_cost = calc_obstacle_cost();
 
             // Check this, basically if no collision, can increase speed to move, this may cause issue, increase speed_ref_bias to maneuver around obstacles
             // if (obs_cost > 0) speed_ref_cost = 0;
@@ -840,6 +855,12 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
 
+            if (obs_cost > max_obstacle_cost) {
+                max_obstacle_cost = obs_cost;
+                worst_obsi = j;
+                worst_mindist = std::min(worst_mindist, obs_cost);
+            }
+
             if (total_cost < min_cost) {
                 min_cost = total_cost;
                 best_v = v_sample;
@@ -847,6 +868,11 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             }
         }
     }
-
-    return {best_v, best_omega, obs_cost};
+    // create a DWAResult struct to hold the results
+    DWAResult result;
+    ROS_INFO("obstacle cost DWA %f", obs_cost);
+    result.best_v = best_v;
+    result.best_omega = best_omega;
+    result.obs_cost = max_obstacle_cost;
+    return result;
 }
