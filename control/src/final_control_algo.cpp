@@ -333,7 +333,7 @@ void PreviewController::boundomega(double ref_omega) {
 
 // Changed from NavigationSystem to PreviewController, main control loop
 bool PreviewController::run_control(bool is_last_goal) {
-    ROS_INFO("Running run control")
+    ROS_INFO("Running run control");
     bool bounded_vel = false;
     bool bounded_omega = false;
     robot_x = current_pose.pose.position.x;
