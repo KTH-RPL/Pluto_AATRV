@@ -66,6 +66,9 @@ class PreviewController {
         // ------------------------------
         
         ros::Subscriber robot_pose_sub_;
+        ros::Subscriber start_moving_sub_;
+        bool start_moving_ = false;
+        void start_moving_callback(const std_msgs::Bool::ConstPtr& msg);
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
@@ -139,6 +142,7 @@ class PreviewController {
 
         double kp_adjust_cte;
         double obst_cost_thresh;
+        double stop_robot_cost_thresh;
         double robot_x;
         double robot_y;
         double robot_theta;

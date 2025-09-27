@@ -46,6 +46,9 @@ preview_controller:
   min_speed: 0.0
   max_speed: 0.3
   dt_dwa: 0.1
+  stop_cost: 200.0
+  obst_cost_thresh: 100.0
+  goal_reduce_factor: 0.5
 
 dwa_controller:
   # Prediction and sampling parameters
