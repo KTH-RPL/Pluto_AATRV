@@ -408,11 +408,11 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (dwa_result.obs_cost > obst_cost_thresh) {
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
-        if (dwa_result.obs_cost > stop_robot_cost_thresh) {
-            v_ = 0.0;
-            omega_ = 0.0;
-            ROS_WARN("Obstacle too close! Stopping robot.");
-        }
+        // if (dwa_result.obs_cost > stop_robot_cost_thresh) {
+        //     v_ = 0.0;
+        //     omega_ = 0.0;
+        //     ROS_WARN("Obstacle too close! Stopping robot.");
+        // }
         ROS_INFO("DWA result: v = %f, omega = %f", v_, omega_);
     }     
     else 
