@@ -68,8 +68,11 @@ class PreviewController {
         
         ros::Subscriber robot_pose_sub_;
         ros::Subscriber start_moving_sub_;
-        bool start_moving_ = false;
+        bool start_moving_ ;
+        bool use_start_top ;
         void start_moving_callback(const std_msgs::Bool::ConstPtr& msg);
+        void stop_moving_callback(const std_msgs::Bool::ConstPtr& msg);
+
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
@@ -112,6 +115,12 @@ class PreviewController {
         double dt_;
         double preview_dt_;
         int preview_steps_;
+
+        // Path params
+        double path_length;
+        double path_wavelength;
+        double path_amplitude;
+        double path_point_spacing;
 
         double cross_track_error_;
         double heading_error_;

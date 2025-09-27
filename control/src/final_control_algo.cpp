@@ -20,6 +20,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     path_pub_ = nh_.advertise<nav_msgs::Path>("planned_path", 10);
     robot_pose_sub_ = nh_.subscribe("/robot_pose", 10, &PreviewController::robot_pose_callback, this);
     start_moving_sub_ = nh_.subscribe("/start_moving", 10, &PreviewController::start_moving_callback, this);
+
     // --- INITIALIZE DEBUG PUBLISHERS ---
     cross_track_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/cross_track_error", 10);
     heading_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/heading_error", 10);
@@ -27,7 +28,18 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     current_v_pub_ = nh_.advertise<std_msgs::Float64>("debug/current_v", 10);
     current_omega_pub_ = nh_.advertise<std_msgs::Float64>("debug/current_omega", 10);
     path_curvature_pub_ = nh_.advertise<std_msgs::Float64>("debug/path_curvature", 10);
+    start_moving_sub_ = nh_.subscribe("/start_moving", 10, &PreviewController::start_moving_callback, this);
+    stop_moving_sub_ = nh_.subscribe("/stop_moving", 10, &PreviewController::stop_moving_callback, this);
+
+
+    start_moving = false;
+    use_start_stop = true;
     // -----------------------------------
+
+    nh_.param("preview_controller/amplitude", path_amplitude, 4.0);
+    nh_.param("preview_controller/wavelength", path_wavelength, 6.0);
+    nh_.param("preview_controller/length", path_length, 10.0);
+    nh_.param("preview_controller/point_spacing", path_point_spacing, 0.3);
 
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
@@ -82,13 +94,24 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     // Factor to reduce speed when close to goal
     nh_.param("preview_controller/goal_reduce_factor", goal_reduce_factor, 0.5);
 
+    nh_.param("preview_controller/use_start_top", use_start_top, true);
+
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
     omega_acc_bound = omega_acc_ * dt_;
 }
 
+void PreviewController::stop_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
+    if (msg->data) {
+        start_moving_ = false;
+    }
+}
+
+
 void PreviewController::start_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
-    start_moving_ = msg->data;
+    if (msg->data) {
+        start_moving_ = true;
+    }
 }
 
 void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
@@ -124,10 +147,10 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
     current_path.clear();
     
     // Snake path parameters (Adjust these)
-    double amplitude = 4;
-    double wavelength = 6;
-    double length = 10.0;
-    double point_spacing = 0.3;
+    double amplitude = path_amplitude;
+    double wavelength = path_wavelength;
+    double length = path_length;
+    double point_spacing = path_point_spacing;
     int num_points = static_cast<int>(std::ceil(length / point_spacing)) + 1;
     
     // Generate snake path
@@ -155,41 +178,38 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
 void PreviewController::initialize_standalone_operation() {
     ROS_INFO("Initializing standalone preview controller...");
     ROS_INFO("Waiting for robot pose...");
-    
-    // Wait for initial pose and path generation
-    ros::Rate rate(10);
+
+    // Wait until a path is generated
     while (ros::ok() && !path_generated_) {
         ros::spinOnce();
-        rate.sleep();
+        ros::Duration(0.1).sleep();  // sleep 100ms
     }
-    
-    if (path_generated_) {
-        // Start control timer
-        control_timer_ = nh_.createTimer(ros::Duration(dt_), 
-            [this](const ros::TimerEvent&) { 
-                if (path_generated_) {
-                    bool goal_reached = this->run_control();
-                    if (goal_reached) {
-                        ROS_INFO("Goal reached! Stopping control.");
-                        this->control_timer_.stop();
-                    }
-                }
-            });
-        
-        ROS_INFO("Standalone preview controller initialized successfully!");
-        ROS_INFO("Control loop started with dt = %.3f seconds", dt_);
-    } else {
+
+    if (!path_generated_) {
         ROS_ERROR("Failed to generate path. Exiting.");
+        return;
+    }
+
+    ROS_INFO("Standalone preview controller initialized successfully!");
+    ROS_INFO("Control loop started with dt = %.3f seconds", dt_);
+
+    // Main control loop
+    while (ros::ok()) {
+        ros::spinOnce();
+
+        if (start_moving_ || !use_start_stop) {
+            bool goal_reached = run_control();
+            if (goal_reached) {
+                ROS_INFO("Goal reached! Stopping control loop.");
+                stop_robot();
+                break;
+            }
+        }
+
+        ros::Duration(dt_).sleep();  // control frequency
     }
 }
 
-// Main standalone control loop
-void PreviewController::run_standalone_control() {
-    initialize_standalone_operation();
-    
-    // Keep the node running
-    ros::spin();
-}
 
 double PreviewController::distancecalc(double x1, double y1, double x2, double y2) {
     return std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
@@ -384,6 +404,8 @@ bool PreviewController::run_control(bool is_last_goal) {
             boundvel(0.0);
             boundomega(-kp_adjust_cte * lookahead_heading_error_);
             ROS_INFO("Adjusting Lookahead Heading Error: %f", lookahead_heading_error_);
+            ROS_INFO("Publishing omega %f", -kp_adjust_cte * lookahead_heading_error_);
+            ROS_INFO("Actual omega %f", omega_);
             bounded_vel = true;
             bounded_omega = true;
             publish_cmd_vel();
@@ -548,7 +570,7 @@ void PreviewController::compute_control(double cross_track_error, double heading
     double u_fb = -(Kb_ * x_state)(0);
     double u_ff = -(Kf_ * curv_vec)(0);
     omega_ = u_fb + u_ff;
-    std::cout << " Theta error: " << heading_error << ", Omega: " << omega_ << ", ey " << cross_track_error << std::endl;
+    ROS_INFO(" Theta error: %f, Omega: %f, ey: %f", heading_error, omega_, cross_track_error);
 }
 
 // Stop the robot

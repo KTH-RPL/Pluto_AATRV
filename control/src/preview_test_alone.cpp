@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
     nh_.param("preview_controller/preview_steps", preview_steps_, 0);
     PreviewController controller(linear_velocity_, dt_, preview_steps_);  // velocity=1.0, dt=0.1, preview_steps=0
     
-    controller.run_standalone_control();
+    controller.initialize_standalone_operation();
     
     return 0;
 } 

@@ -50,6 +50,14 @@ preview_controller:
   obst_cost_thresh: 100.0
   goal_reduce_factor: 0.5
 
+  # Path params
+  amplitude: 4
+  length: 10
+  wavelength: 6
+  point_spacing: 0.3
+  use_start_top: true
+
+
 dwa_controller:
   # Prediction and sampling parameters
   predict_time: 2.0
