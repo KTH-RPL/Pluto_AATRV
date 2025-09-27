@@ -167,7 +167,7 @@ void PreviewController::initialize_standalone_operation() {
         // Start control timer
         control_timer_ = nh_.createTimer(ros::Duration(dt_), 
             [this](const ros::TimerEvent&) { 
-                if (path_generated_ && start_moving_) {
+                if (path_generated_) {
                     bool goal_reached = this->run_control();
                     if (goal_reached) {
                         ROS_INFO("Goal reached! Stopping control.");
@@ -493,10 +493,16 @@ bool PreviewController::chkside(double path_theta) {
     double x1 = current_path[targetid].x;
     double y1 = current_path[targetid].y;
     double m = -1 / std::tan(path_theta);
+    double ineq = 0;
+    // In case of straight line, use y-intercept
     if (std::fabs(std::tan(path_theta)) < 1e-6) {
         m = std::numeric_limits<double>::infinity();
+        ineq = robot_y - y1;
+
     }
-    double ineq = robot_y - (m * robot_x) - y1 + (m * x1);
+    else {
+        ineq = robot_y - (m * robot_x) - y1 + (m * x1);
+    }
     bool t = false;
     if (ineq > 0) {
         t = true;
