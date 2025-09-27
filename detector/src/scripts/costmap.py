@@ -3,12 +3,17 @@
 # ROS1 Imports
 import rospy
 from nav_msgs.msg import OccupancyGrid
-from visualization_msgs.msg import MarkerArray
-from geometry_msgs.msg import Pose
+from visualization_msgs.msg import MarkerArray, Marker
+from geometry_msgs.msg import Pose, PointStamped
+
+# <<< NEW: Import TF2 for coordinate transformations
+import tf2_ros
+import tf2_geometry_msgs # For transforming geometry_msgs
 
 # Standard Python Imports
 import numpy as np
 import cv2
+from collections import deque
 
 class CostmapGeneratorNode:
     def __init__(self):
@@ -24,33 +29,39 @@ class CostmapGeneratorNode:
         self.resolution = rospy.get_param('~resolution', 0.1)
         self.map_frame = rospy.get_param('~map_frame', 'base_link')
         
-        # --- NEW: Gradient Inflation Parameters ---
-        # The radius at which cost is at its maximum (lethal cost)
+        # Gradient Inflation Parameters
         self.inflation_radius = rospy.get_param('~inflation_radius', 0.7)
-        # The radius at which the cost gradient ends (cost becomes zero)
         self.gradient_end_radius = rospy.get_param('~gradient_end_radius', 1.2)
-        # Max cost value in the OccupancyGrid (0-100)
         self.max_cost = rospy.get_param('~max_cost', 100)
 
-        # --- Pre-calculate map and gradient properties ---
+        # <<< NEW: Obstacle Memory Parameter
+        self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 5.0)) # seconds
+
+        # <<< NEW: TF2 listener setup
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        # <<< NEW: Data structure to store obstacles with timestamps
+        # We will store (timestamp, marker) tuples
+        self.persisted_obstacles = []
+
+        # --- Pre-calculate map properties ---
         self.width_cells = int(self.map_size_meters / self.resolution)
         self.height_cells = int(self.map_size_meters / self.resolution)
         self.origin_x = -self.map_size_meters / 2.0
         self.origin_y = -self.map_size_meters / 2.0
         
-        # Calculate the width of the gradient in meters
         self.gradient_width = self.gradient_end_radius - self.inflation_radius
         if self.gradient_width <= 0:
             rospy.logwarn("Gradient end radius must be greater than inflation radius. Disabling gradient.")
-            self.gradient_width = 0 # Disable gradient if params are invalid
+            self.gradient_width = 0
 
         # --- ROS Subscriber and Publisher ---
         self.obstacle_sub = rospy.Subscriber(obstacle_topic, MarkerArray, self.obstacles_callback, queue_size=1)
         self.costmap_pub = rospy.Publisher(costmap_topic, OccupancyGrid, queue_size=1)
 
-        rospy.loginfo("Costmap Generator Node with Gradient Inflation initialized.")
-        rospy.loginfo(f"Inflation Radius (max cost): {self.inflation_radius}m")
-        rospy.loginfo(f"Gradient End Radius (zero cost): {self.gradient_end_radius}m")
+        rospy.loginfo("Costmap Generator Node with Memory and Gradient Inflation initialized.")
+        rospy.loginfo(f"Obstacle memory duration: {self.memory_duration.to_sec()}s")
 
     def world_to_map(self, wx, wy):
         """Converts world coordinates (in meters, in map_frame) to map coordinates (in cells)."""
@@ -59,13 +70,68 @@ class CostmapGeneratorNode:
         return mx, my
 
     def obstacles_callback(self, marker_array_msg):
-        """Processes obstacle markers and generates the gradient costmap."""
+        """Processes new and remembered obstacles to generate the costmap."""
+        now = rospy.Time.now()
+
+        # --- Step 1: Add new obstacles to our memory buffer ---
+        for marker in marker_array_msg.markers:
+            # We store the marker as it arrived, in its original frame
+            self.persisted_obstacles.append((now, marker))
+        
+        # --- Step 2: Filter out old obstacles from the memory buffer ---
+        if self.memory_duration.to_sec() > 0:
+            self.persisted_obstacles = [
+                (ts, m) for ts, m in self.persisted_obstacles 
+                if (now - ts) < self.memory_duration
+            ]
+        else: # If memory is zero, only use the current ones
+            self.persisted_obstacles = []
+            for marker in marker_array_msg.markers:
+                self.persisted_obstacles.append((now, marker))
+
+
+        # --- Step 3: Transform all persisted obstacles into the current map_frame ---
+        obstacles_in_current_frame = []
+        for timestamp, marker in self.persisted_obstacles:
+            try:
+                # We need to transform from the marker's frame to our target map_frame
+                # This handles cases where obstacles are detected in, e.g., 'camera_link'
+                transform = self.tf_buffer.lookup_transform(
+                    self.map_frame, 
+                    marker.header.frame_id, 
+                    timestamp, # The time the data was captured
+                    rospy.Duration(0.1) # Timeout
+                )
+                
+                # Create a new marker to hold the transformed points
+                transformed_marker = Marker()
+                transformed_marker.header.frame_id = self.map_frame # The new frame is our map frame
+                transformed_marker.points = []
+                transformed_marker.action = marker.action
+                transformed_marker.type = marker.type
+                
+                # Transform each point in the polygon
+                for point in marker.points:
+                    p_stamped = PointStamped()
+                    p_stamped.header = marker.header
+                    p_stamped.header.stamp = timestamp # Use the original timestamp for the transform
+                    p_stamped.point = point
+                    
+                    transformed_point_stamped = tf2_geometry_msgs.do_transform_point(p_stamped, transform)
+                    transformed_marker.points.append(transformed_point_stamped.point)
+
+                obstacles_in_current_frame.append(transformed_marker)
+            
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+                rospy.logwarn_throttle(2.0, f"Could not transform obstacle from {marker.header.frame_id} to {self.map_frame}: {e}")
+                continue
+
+        # --- Step 4: Generate costmap from the combined (new + remembered) obstacles ---
         try:
-            # 1. Create a grid to mark the raw obstacle locations
             obstacle_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
 
-            # 2. Rasterize each obstacle polygon onto the grid
-            for marker in marker_array_msg.markers:
+            # Rasterize each transformed obstacle polygon
+            for marker in obstacles_in_current_frame:
                 if marker.action != marker.ADD or marker.type != marker.LINE_STRIP or len(marker.points) < 3:
                     continue
 
@@ -78,49 +144,27 @@ class CostmapGeneratorNode:
                 if len(polygon_points_map) < 3:
                     continue
                 
-                # Fill the polygon area. We'll mark it with 255 to distinguish from free space (0).
                 cv2.fillPoly(obstacle_grid, [np.array(polygon_points_map, dtype=np.int32)], 255)
 
-            # 3. Use Distance Transform to calculate the distance from every cell to the nearest obstacle
-            # We want distances from non-obstacle points to obstacle points.
-            # `distanceTransform` computes distance from a zero pixel to the nearest non-zero pixel.
-            # So, we invert our grid: obstacles become 0, free space becomes 255.
-            dist_transform_input = cv2.bitwise_not(obstacle_grid)
-            
-            # Calculate Euclidean distance for each pixel to the nearest zero (our obstacles)
-            # The result is a float32 array where each value is the distance in pixels.
-            dist_pixels = cv2.distanceTransform(dist_transform_input, cv2.DIST_L2, 5)
+            # --- The rest of the logic is unchanged ---
 
-            # Convert pixel distances to meter distances
+            dist_transform_input = cv2.bitwise_not(obstacle_grid)
+            dist_pixels = cv2.distanceTransform(dist_transform_input, cv2.DIST_L2, 5)
             dist_meters = dist_pixels * self.resolution
             
-            # 4. Create the final costmap with the gradient
-            # Initialize with zeros (free space)
             costmap_grid = np.zeros_like(dist_meters, dtype=np.uint8)
             
-            # Apply cost function based on distance
-            # Zone 1: Lethal cost (within inflation_radius)
             lethal_mask = dist_meters <= self.inflation_radius
             costmap_grid[lethal_mask] = self.max_cost
             
-            # Zone 2: Gradient cost (between inflation_radius and gradient_end_radius)
             if self.gradient_width > 0:
                 gradient_mask = (dist_meters > self.inflation_radius) & (dist_meters < self.gradient_end_radius)
-                
-                # Get distances only in the gradient zone
                 gradient_distances = dist_meters[gradient_mask]
-                
-                # Linearly map distance to cost:
-                # Cost = Max_Cost * (1 - (current_dist - inflation_radius) / gradient_width)
                 slope = -self.max_cost / self.gradient_width
                 intercept = self.max_cost * (self.gradient_end_radius / self.gradient_width)
                 gradient_costs = slope * gradient_distances + intercept
-
                 costmap_grid[gradient_mask] = gradient_costs.astype(np.uint8)
 
-            # Zone 3 (outside gradient_end_radius) is already 0.
-
-            # 5. Publish the resulting OccupancyGrid
             self.publish_costmap(costmap_grid)
 
         except Exception as e:
@@ -137,7 +181,6 @@ class CostmapGeneratorNode:
         msg.info.origin = Pose()
         msg.info.origin.position.x = self.origin_x
         msg.info.origin.position.y = self.origin_y
-        msg.info.origin.position.z = 0.0
         msg.info.origin.orientation.w = 1.0
         msg.data = grid_data.flatten().astype(np.int8).tolist()
         self.costmap_pub.publish(msg)
