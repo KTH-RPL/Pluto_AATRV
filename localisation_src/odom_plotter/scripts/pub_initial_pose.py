@@ -5,9 +5,12 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.transformations import quaternion_from_euler
 import numpy as np
 import math
+import time
 
 def publish_initial_pose():
     rospy.init_node('initialpose_publisher')
+    print("Waiting for 5 seconds")
+    time.sleep(5)
 
     pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
 

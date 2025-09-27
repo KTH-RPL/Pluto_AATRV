@@ -89,7 +89,7 @@ void NdtLocalizer::callback_init_pose(
   init_pose = false;
 }
 
-void NdtLocalizer::callback_pointsmap(
+/*void NdtLocalizer::callback_pointsmap(
   const sensor_msgs::PointCloud2::ConstPtr & map_points_msg_ptr)
 {
   const auto trans_epsilon = ndt_.getTransformationEpsilon();
@@ -116,6 +116,34 @@ void NdtLocalizer::callback_pointsmap(
   ndt_map_mtx_.lock();
   ndt_ = ndt_new;
   ndt_map_mtx_.unlock();
+}*/
+void NdtLocalizer::callback_pointsmap(
+    const sensor_msgs::PointCloud2::ConstPtr & map_points_msg_ptr)
+{
+    // Convert ROS message to PCL point cloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr map_points_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(*map_points_msg_ptr, *map_points_ptr);
+
+    // Lock mutex while updating the NDT map
+    std::lock_guard<std::mutex> lock(ndt_map_mtx_);
+
+    // Set the target map in NDT-OMP
+    ndt_.setInputTarget(map_points_ptr);
+
+    // Optional: tune NDT parameters (can also be done once during init)
+    ndt_.setTransformationEpsilon(ndt_.getTransformationEpsilon());
+    ndt_.setStepSize(ndt_.getStepSize());
+    ndt_.setResolution(ndt_.getResolution());
+    ndt_.setMaximumIterations(ndt_.getMaximumIterations());
+
+#ifdef _OPENMP
+    ndt_.setNumThreads(omp_get_max_threads());  // Use all available threads
+#endif
+    ndt_.setNeighborhoodSearchMethod(pclomp::DIRECT7);
+
+    // Optional: align a dummy cloud to initialize internal structures
+    pcl::PointCloud<pcl::PointXYZ>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    ndt_.align(*output_cloud, Eigen::Matrix4f::Identity());
 }
 
 void NdtLocalizer::callback_pointcloud(
@@ -183,14 +211,14 @@ void NdtLocalizer::callback_pointcloud(
   const auto exe_end_time = std::chrono::system_clock::now();
   const double exe_time = std::chrono::duration_cast<std::chrono::microseconds>(exe_end_time - exe_start_time).count() / 1000.0;
 
-  const float transform_probability = ndt_.getTransformationProbability();
+  const float transform_probability = ndt_.getFitnessScore();
   const int iteration_num = ndt_.getFinalNumIteration();
 
   bool is_converged = true;
   static size_t skipping_publish_num = 0;
   if (
     iteration_num >= ndt_.getMaximumIterations() + 2 ||
-    transform_probability < converged_param_transform_probability_) {
+    ndt_.getFitnessScore() > 0.5) {
     is_converged = false;
     ++skipping_publish_num;
     std::cout << "Not Converged" << std::endl;
@@ -240,7 +268,7 @@ void NdtLocalizer::callback_pointcloud(
   exe_time_pub_.publish(exe_time_msg);
 
   std_msgs::Float32 transform_probability_msg;
-  transform_probability_msg.data = transform_probability;
+  transform_probability_msg.data = ndt_.getFitnessScore();
   transform_probability_pub_.publish(transform_probability_msg);
 
   std_msgs::Float32 iteration_num_msg;
