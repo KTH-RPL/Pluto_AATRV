@@ -55,7 +55,7 @@ class RobotPosePublisher:
             self.robot_yaw -= 2 * np.pi
         elif self.robot_yaw < -np.pi:
             self.robot_yaw += 2 * np.pi
-        print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
+        # print("First_yaw ,",self.first_yaw," MSG ",yaw,"  robot yaw ",self.robot_yaw)
 
             
     def publish_robot_pose(self):
