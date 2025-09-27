@@ -3,6 +3,7 @@
 #include <cmath>
 #include <unsupported/Eigen/MatrixFunctions>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Bool.h>
 #include <ros/ros.h>
 #include <limits>
 #include <algorithm>
@@ -375,7 +376,6 @@ bool PreviewController::run_control(bool is_last_goal) {
     lhe_msg.data = lookahead_heading_error_;
     lookahead_heading_error_pub_.publish(lhe_msg);
     // ---------------------------------------
-    if 
     if (!initial_alignment_) {
         if (std::abs(lookahead_heading_error_) < max_lookahead_heading_error) {
             initial_alignment_ = true;
@@ -408,7 +408,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (dwa_result.obs_cost > obst_cost_thresh) {
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
-        if dwa_result.obs_cost > stop_robot_cost_thresh {
+        if (dwa_result.obs_cost > stop_robot_cost_thresh) {
             v_ = 0.0;
             omega_ = 0.0;
             ROS_WARN("Obstacle too close! Stopping robot.");

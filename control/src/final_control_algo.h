@@ -11,6 +11,7 @@
 #include <nav_msgs/Path.h>
 #include <limits>
 #include <std_msgs/Float64.h> // Include for debug message type
+#include <std_msgs/Bool.h>
 #include <nav_msgs/OccupancyGrid.h>
 
 struct Waypoint {
@@ -143,6 +144,7 @@ class PreviewController {
         double kp_adjust_cte;
         double obst_cost_thresh;
         double stop_robot_cost_thresh;
+        double goal_reduce_factor;
         double robot_x;
         double robot_y;
         double robot_theta;
