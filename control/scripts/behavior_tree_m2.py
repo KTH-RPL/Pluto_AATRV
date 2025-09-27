@@ -9,6 +9,7 @@ from rsequence import RSequence
 # from control import NavigationSystem
 from geometry_msgs.msg import PoseArray, PoseStamped, Pose
 from nav_msgs.msg import Path
+from std_msgs.msg import Float32
 
 from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal ## Need to change
 import gmap_utility
@@ -23,7 +24,10 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
 
         c_goal = goal_robot_condition()
         # global_path_client  ### Action Server is already subscibing to the robot_pose, will it be good if i subscribe??
-    
+
+        # Create the check_localization behavior
+        check_loc = check_localization(c_goal)
+        
         b0 = pt.composites.Selector(
             name="Global Planner Fallback",
             children=[global_path_exist(c_goal),global_path_client(c_goal) ]
@@ -50,52 +54,85 @@ class goal_robot_condition():
         self.goals = None  
         self.get_global_path = None
         # self.task_completed = False
-        self.pose_file = os.path.expanduser("~/robot_last_pose.json")
-        os.makedirs(os.path.dirname(self.pose_file), exist_ok=True)
         # self.global_path_pub = rospy.Publisher('/global_path', Path, queue_size=10)
         rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
         rospy.Subscriber("/waypoints", Path,self.waypoints_callback)
-        # Save pose every 5 seconds
-        rospy.Timer(rospy.Duration(5.0), self.save_pose_timer_cb)
+       
         # Save pose on shutdown
         rospy.on_shutdown(self.save_last_pose_on_shutdown)
+
+        # for localization condition 
+        self.transform_probability = None
+        self.pose_history_file = os.path.expanduser("~/robot_pose_history.json")
+        os.makedirs(os.path.dirname(self.pose_file), exist_ok=True)
+        self.valid_poses = []  # Store history of valid poses with scores
+        self.last_good_pose = None  # To store the last pose with good score
+        rospy.Subscriber("/transform_probability", Float32, self.transform_probability_cb)
+
+    def transform_probability_cb(self, msg):
+        self.transform_probability = msg.data   
         
     def robot_pose_cb(self, msg):
         self.robot_pose = msg
-        # if self.home_pose is None:
-        #     self.home_pose = msg.pose
-        #     rospy.loginfo(f"[Home Pose Saved] x: {self.home_pose.position.x}, y: {self.home_pose.position.y}")
+
+        # Only save pose if we have a fitness score
+        if self.transform_probability is not None:
+            pose_entry = {
+                "timestamp": rospy.Time.now().to_sec(),
+                "fitness_score": self.transform_probability,
+                "pose": {
+                    "position": {
+                        "x": msg.pose.position.x,
+                        "y": msg.pose.position.y,
+                        "z": msg.pose.position.z
+                    },
+                    "orientation": {
+                        "x": msg.pose.orientation.x,
+                        "y": msg.pose.orientation.y,
+                        "z": msg.pose.orientation.z,
+                        "w": msg.pose.orientation.w
+                    }
+                }
+            }
+            
+            # Save every pose with its score
+            self.valid_poses.append(pose_entry)
+            
+            # Update last good pose if score is good
+            if self.transform_probability >= 6.0:
+                self.last_good_pose = pose_entry
+                
+            # Keep only last 1000 poses to prevent file from growing too large
+            if len(self.valid_poses) > 1000:
+                self.valid_poses = self.valid_poses[-1000:]
+                
+            self.save_pose_history()
     
-    def save_pose_timer_cb(self, event):
-        if self.robot_pose:
-            self.save_pose_to_file(self.robot_pose.pose)
+    def save_pose_history(self):
+        try:
+            with open(self.pose_history_file, 'w') as f:
+                json.dump({"valid_poses": self.valid_poses}, f, indent=4)
+        except Exception as e:
+            rospy.logwarn(f"Failed to save pose history: {e}")
+
+    def get_last_good_pose(self):
+        """Get the most recent pose that had a score above 6.0"""
+        if self.last_good_pose:
+            return self.last_good_pose
+        
+        # If last_good_pose is not set, search through history
+        for pose in reversed(self.valid_poses):
+            if pose["fitness_score"] >= 6.0:
+                self.last_good_pose = pose
+                return pose
+        return None
 
     def save_last_pose_on_shutdown(self):
         """Save the last known pose when ROS shuts down."""
-        if self.robot_pose:
-            rospy.loginfo("Saving last robot pose on shutdown.")
-            self.save_pose_to_file(self.robot_pose.pose)
 
-    def save_pose_to_file(self, pose):
-        pose_dict = {
-            "position": {
-                "x": pose.position.x,
-                "y": pose.position.y,
-                "z": pose.position.z
-            },
-            "orientation": {
-                "x": pose.orientation.x,
-                "y": pose.orientation.y,
-                "z": pose.orientation.z,
-                "w": pose.orientation.w
-            }
-        }
+        rospy.loginfo("Saving last robot pose on shutdown.")
+        self.save_pose_history()
 
-        try:
-            with open(self.pose_file, 'w') as f:
-                json.dump(pose_dict, f, indent=4)
-        except Exception as e:
-            rospy.logwarn(f"Failed to save pose: {e}")
     def waypoints_callback(self, msg):
         if not self.goals:   ### Need to check like if goal changes then it wont run again
             # Convert Path (PoseStamped list) into PoseArray
@@ -110,6 +147,7 @@ class goal_robot_condition():
                 pose_array.poses.append(pose)
             self.goals = pose_array
             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals)} goals.")
+
 
 class goal_reached(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
@@ -137,7 +175,46 @@ class goal_reached(pt.behaviour.Behaviour):
 
         return pt.common.Status.FAILURE
 
-## May be in this i should add proper condition of wheter path correctly added
+
+class check_localization(pt.behaviour.Behaviour):
+    def __init__(self, c_goal):
+        super(check_localization, self).__init__("CheckLocalization")
+        self.c_goal = c_goal
+        self.min_score = 6.2
+        self.pose_pub = rospy.Publisher('/initial_pose', PoseStamped, queue_size=1)
+
+    def update(self):
+        if self.c_goal.transform_probability is None:
+            rospy.logwarn("[CheckLocalization] No localization score received")
+            return pt.common.Status.RUNNING
+
+        if self.c_goal.transform_probability < self.min_score:
+            rospy.logwarn(f"[CheckLocalization] Poor localization score: {self.c_goal.transform_probability}")
+            
+            # Get last good pose
+            last_good = self.c_goal.get_last_good_pose()
+            if last_good:
+                # Create and publish the last good pose
+                corrected_pose = PoseStamped()
+                corrected_pose.header.frame_id = "map"  # Adjust if needed
+                corrected_pose.header.stamp = rospy.Time.now()
+                corrected_pose.pose.position.x = last_good["pose"]["position"]["x"]
+                corrected_pose.pose.position.y = last_good["pose"]["position"]["y"]
+                corrected_pose.pose.position.z = last_good["pose"]["position"]["z"]
+                corrected_pose.pose.orientation.x = last_good["pose"]["orientation"]["x"]
+                corrected_pose.pose.orientation.y = last_good["pose"]["orientation"]["y"]
+                corrected_pose.pose.orientation.z = last_good["pose"]["orientation"]["z"]
+                corrected_pose.pose.orientation.w = last_good["pose"]["orientation"]["w"]
+                
+                self.pose_pub.publish(corrected_pose)
+                rospy.loginfo("[CheckLocalization] Published last good pose with score: %f", 
+                            last_good["fitness_score"])
+            
+            return pt.common.Status.FAILURE
+
+        return pt.common.Status.SUCCESS
+
+## May be in this i should add proper condition of whether path correctly added
 class global_path_exist(pt.behaviour.Behaviour):
     def __init__(self,c_goal):
         super(global_path_exist,self).__init__("global_path_exists")
