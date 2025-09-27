@@ -18,7 +18,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
     path_pub_ = nh_.advertise<nav_msgs::Path>("planned_path", 10);
     robot_pose_sub_ = nh_.subscribe("/robot_pose", 10, &PreviewController::robot_pose_callback, this);
-
+    start_moving_sub_ = nh_.subscribe("/start_moving", 10, &PreviewController::start_moving_callback, this);
     // --- INITIALIZE DEBUG PUBLISHERS ---
     cross_track_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/cross_track_error", 10);
     heading_error_pub_ = nh_.advertise<std_msgs::Float64>("debug/heading_error", 10);
@@ -75,9 +75,19 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     // R matrix for the preview controller
     nh_.param("preview_controller/R", R_param_, 1.0);
 
+    // If obstacle cost exceeds this, stop the robot
+    nh_.param("preview_controller/stop_cost", stop_robot_cost_thresh, 200.0);
+
+    // Factor to reduce speed when close to goal
+    nh_.param("preview_controller/goal_reduce_factor", goal_reduce_factor, 0.5);
+
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
     omega_acc_bound = omega_acc_ * dt_;
+}
+
+void PreviewController::start_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
+    start_moving_ = msg->data;
 }
 
 void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
@@ -156,7 +166,7 @@ void PreviewController::initialize_standalone_operation() {
         // Start control timer
         control_timer_ = nh_.createTimer(ros::Duration(dt_), 
             [this](const ros::TimerEvent&) { 
-                if (path_generated_) {
+                if (path_generated_ && start_moving_) {
                     bool goal_reached = this->run_control();
                     if (goal_reached) {
                         ROS_INFO("Goal reached! Stopping control.");
@@ -365,7 +375,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     lhe_msg.data = lookahead_heading_error_;
     lookahead_heading_error_pub_.publish(lhe_msg);
     // ---------------------------------------
-    
+    if 
     if (!initial_alignment_) {
         if (std::abs(lookahead_heading_error_) < max_lookahead_heading_error) {
             initial_alignment_ = true;
@@ -381,18 +391,28 @@ bool PreviewController::run_control(bool is_last_goal) {
         }
     }
 
-    // Call DWA controller
-    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+    
 
     double x_goal = current_path[max_path_points - 1].x;
     double y_goal = current_path[max_path_points - 1].y;
     double goal_distance = distancecalc(robot_x, robot_y, x_goal, y_goal);
+    if(goal_distance < 1.0)
+        boundvel(goal_distance*linear_velocity_*goal_reduce_factor);
+    else
+        boundvel(linear_velocity_);
+    // Call DWA controller
+    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
     ROS_INFO("obstacle cost if %f", dwa_result.obs_cost);
 
     // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
     if (dwa_result.obs_cost > obst_cost_thresh) {
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
+        if dwa_result.obs_cost > stop_robot_cost_thresh {
+            v_ = 0.0;
+            omega_ = 0.0;
+            ROS_WARN("Obstacle too close! Stopping robot.");
+        }
         ROS_INFO("DWA result: v = %f, omega = %f", v_, omega_);
     }     
     else 
