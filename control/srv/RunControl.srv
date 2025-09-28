@@ -1,0 +1,7 @@
+bool is_last_goal
+---
+int8 status
+
+# 0 = RUNNING
+# 1 = SUCCESS
+# 2 = FAILURE
