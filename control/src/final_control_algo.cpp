@@ -32,7 +32,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     stop_moving_sub_ = nh_.subscribe("/stop_moving", 10, &PreviewController::stop_moving_callback, this);
 
 
-    start_moving = false;
+    start_moving_ = false;
     use_start_stop = true;
     // -----------------------------------
 
@@ -94,7 +94,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     // Factor to reduce speed when close to goal
     nh_.param("preview_controller/goal_reduce_factor", goal_reduce_factor, 0.5);
 
-    nh_.param("preview_controller/use_start_top", use_start_top, true);
+    nh_.param("preview_controller/use_start_top", use_start_stop, true);
 
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;

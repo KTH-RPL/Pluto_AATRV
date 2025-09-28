@@ -5,8 +5,8 @@
 // Instantiate your controller
 PreviewController controller;
 
-bool runControlCallback(your_pkg::RunControl::Request &req,
-                        your_pkg::RunControl::Response &res)
+bool runControlCallback(robot_controller::RunControl::Request &req,
+    robot_controller::RunControl::Response &res)
 {
     ROS_INFO("[ControlService] run_control called with is_last_goal=%s",
              req.is_last_goal ? "true" : "false");

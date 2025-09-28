@@ -44,6 +44,7 @@ struct DWAResult {
 class PreviewController {
     public:
         PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 5);
+        bool run_control(bool is_last_goal = false);
         void initialize_dwa_controller();
         void generate_snake_path(double start_x, double start_y, double start_theta);
         void initialize_standalone_operation();
@@ -68,15 +69,16 @@ class PreviewController {
         
         ros::Subscriber robot_pose_sub_;
         ros::Subscriber start_moving_sub_;
+        ros::Subscriber stop_moving_sub_;
         bool start_moving_ ;
-        bool use_start_top ;
+        bool use_start_stop ;
         void start_moving_callback(const std_msgs::Bool::ConstPtr& msg);
         void stop_moving_callback(const std_msgs::Bool::ConstPtr& msg);
 
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
-        bool run_control(bool is_last_goal = false);
+        
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
         void calculate_all_curvatures(); // Calculate curvatures for all path points
@@ -91,6 +93,7 @@ class PreviewController {
         void boundvel(double ref_vel);
         void boundomega(double ref_omega);
         int closest_point(double x, double y);
+
 
         bool initial_alignment_;
 
