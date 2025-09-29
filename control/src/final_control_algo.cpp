@@ -764,7 +764,7 @@ uint8_t dwa_controller::getCostmapCost(int mx, int my) {
 std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) {
     std::vector<double> Vs = {min_speed_, max_speed_, -max_omega_, max_omega_};
     std::vector<double> Vd = {v - vel_acc_ * dt_dwa_, v + vel_acc_ * dt_dwa_, omega - omega_acc_ * dt_dwa_, omega + omega_acc_ * dt_dwa_};
-    std::vector<double> vr = {std::max(Vs[0], Vd[0]), std::min(Vs[1], Vd[1]), std::max(Vs[2], Vd[2]), std::min(Vs[3], Vd[3])};
+    std::vector<double> vr = {std::min(Vs[0], Vd[0]), std::min(Vs[1], Vd[1]), std::max(Vs[2], Vd[2]), std::min(Vs[3], Vd[3])};
     return vr;
 }
 
@@ -978,6 +978,24 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
+
+            ROS_INFO_NAMED("cost_calculation",
+                "--- Trajectory Cost Details ---\n"
+                "\tPath Cost      (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tLookahead Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tAway Cost      (bias * cost): %.2f * %.2f = %.2f\n"
+                "----------------------------------\n"
+                "\t>>> Total Cost: %.2f",
+                // Arguments for the format string:
+                path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
+                goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost,
+                occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
+                speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
+                away_bias_, away_cost, away_bias_ * away_cost,
+                total_cost
+            );
 
             // --- NEW --- Visualization Logic
             visualization_msgs::Marker traj_marker;
