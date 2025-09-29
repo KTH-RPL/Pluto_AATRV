@@ -50,6 +50,10 @@ preview_controller:
   obst_cost_thresh: 100.0
   goal_reduce_factor: 0.5
 
+
+  path_type: "straight"                 # OPTIONS: "snake" or "straight"
+  straight_path_distance: 5.0           # [m] Distance to travel in a straight line
+
   # Path params
   amplitude: 4
   length: 10

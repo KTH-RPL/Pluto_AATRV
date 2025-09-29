@@ -47,6 +47,9 @@ class PreviewController {
         bool run_control(bool is_last_goal = false);
         void initialize_dwa_controller();
         void generate_snake_path(double start_x, double start_y, double start_theta);
+        // --- NEW ---
+        void generate_straight_path(double start_x, double start_y, double start_theta);
+        // -----------
         void initialize_standalone_operation();
         void run_standalone_control();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
@@ -120,6 +123,10 @@ class PreviewController {
         int preview_steps_;
 
         // Path params
+        // --- MODIFIED ---
+        std::string path_type_;
+        double straight_path_distance_;
+        // ----------------
         double path_length;
         double path_wavelength;
         double path_amplitude;

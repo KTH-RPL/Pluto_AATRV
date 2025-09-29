@@ -36,10 +36,13 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     use_start_stop = true;
     // -----------------------------------
 
+    // --- MODIFIED --- Path generation parameters
+    nh_.param<std::string>("preview_controller/path_type", path_type_, "snake"); // "snake" or "straight"
     nh_.param("preview_controller/amplitude", path_amplitude, 4.0);
     nh_.param("preview_controller/wavelength", path_wavelength, 6.0);
     nh_.param("preview_controller/length", path_length, 10.0);
     nh_.param("preview_controller/point_spacing", path_point_spacing, 0.3);
+    nh_.param("preview_controller/straight_path_distance", straight_path_distance_, 5.0); // For straight path
 
     // Params to modify for different scenarios
     // Reference optimal velocity for robot
@@ -120,16 +123,26 @@ void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::Co
     robot_y = current_pose.pose.position.y;
     robot_theta = current_pose.pose.orientation.z;
     
-    // Generate path on first pose received
+    // --- MODIFIED --- Generate path on first pose received based on path_type_ parameter
     if (!initial_pose_received_) {
         initial_pose_received_ = true;
         ROS_INFO("Initial robot pose received: x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
-        generate_snake_path(robot_x, robot_y, robot_theta);
+
+        if (path_type_ == "snake") {
+            ROS_INFO("Path type set to 'snake'. Generating snake path...");
+            generate_snake_path(robot_x, robot_y, robot_theta);
+        } else if (path_type_ == "straight") {
+            ROS_INFO("Path type set to 'straight'. Generating straight line path...");
+            generate_straight_path(robot_x, robot_y, robot_theta);
+        } else {
+            ROS_ERROR("Invalid path_type '%s'. Defaulting to snake path.", path_type_.c_str());
+            generate_snake_path(robot_x, robot_y, robot_theta);
+        }
+
         initialize_dwa_controller();
         path_generated_ = true;
         calculate_all_curvatures(); // Precompute curvatures for all path points
         publish_path();  // Publish the generated path
-        ROS_INFO("Snake path generated with %d waypoints", max_path_points);
     }
 
     if (initial_pose_received_) {
@@ -171,8 +184,37 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
     }
     
     max_path_points = current_path.size();
-    ROS_INFO("Generated snake path with %d points", max_path_points);
+    ROS_INFO("Generated snake path with %d points.", max_path_points);
 }
+
+// --- NEW --- Generate a straight line path
+void PreviewController::generate_straight_path(double start_x, double start_y, double start_theta) {
+    current_path.clear();
+
+    // Parameters for straight path
+    double length = straight_path_distance_;
+    double point_spacing = path_point_spacing;
+    int num_points = static_cast<int>(std::ceil(length / point_spacing)) + 1;
+
+    // Generate straight path points
+    for (int i = 0; i < num_points; ++i) {
+        double dist_along_path = i * point_spacing;
+        // Ensure the last point is exactly at the end
+        if (i == num_points - 1) {
+            dist_along_path = length;
+        }
+
+        double x = start_x + dist_along_path * std::cos(start_theta);
+        double y = start_y + dist_along_path * std::sin(start_theta);
+        double theta = start_theta; // Orientation is constant for a straight line
+
+        current_path.emplace_back(x, y, theta);
+    }
+
+    max_path_points = current_path.size();
+    ROS_INFO("Generated straight path with %d points over %.2f meters.", max_path_points, length);
+}
+
 
 // Initialize standalone operation
 void PreviewController::initialize_standalone_operation() {
