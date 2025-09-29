@@ -421,11 +421,25 @@ bool PreviewController::run_control(bool is_last_goal) {
         targetid++;
     }
 
-    // Gets the lookahead point
+    // Gets the lookahead point by distance first
     while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
         targetid++;
     }
-        
+
+    // Advance lookahead if point lies in obstacle cells (cost >= 50)
+    if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
+        while (targetid + 1 < max_path_points) {
+            double lx = current_path[targetid].x;
+            double ly = current_path[targetid].y;
+            uint8_t c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y);
+            if (c >= 50) {
+                ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%u). Advancing.", targetid, c);
+                targetid++;
+                continue;
+            }
+            break;
+        }
+    }
 
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 
@@ -717,6 +731,29 @@ void dwa_controller::costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& m
     costmap_received_ = true;
 }
 
+uint8_t dwa_controller::query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const {
+    if (!costmap_received_) return 100;
+    int mx, my;
+    // worldToCostmap requires non-const this currently; replicate minimal transform here
+    double rel_x = wx - robot_x;
+    double rel_y = wy - robot_y;
+
+    double origin_x = occ_grid_.info.origin.position.x;
+    double origin_y = occ_grid_.info.origin.position.y;
+    double resolution = occ_grid_.info.resolution;
+
+    mx = static_cast<int>((rel_x - origin_x) / resolution);
+    my = static_cast<int>((rel_y - origin_y) / resolution);
+    if (mx < 0 || my < 0 ||
+        mx >= static_cast<int>(occ_grid_.info.width) ||
+        my >= static_cast<int>(occ_grid_.info.height)) {
+        return 100;
+    }
+    int idx = my * occ_grid_.info.width + mx;
+    if (idx < 0 || idx >= static_cast<int>(occ_grid_.data.size())) return 100;
+    return static_cast<uint8_t>(occ_grid_.data[idx]);
+}
+
 // void dwa_controller::obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg) {
 //     obstacles.clear(); // Clear previous obstacles
 //     for (const auto& marker : msg->markers) {
@@ -830,52 +867,28 @@ double dwa_controller::calc_speed_ref_cost(double v) {
     return std::abs(v - ref_velocity_);
 }
 
-// --- MODIFIED ---
-// Calculate cost upon each time step.
-// CHANGED: Instead of averaging, we now check for immediate collision and return the MAXIMUM cost found.
 double dwa_controller::calc_obstacle_cost() {
     if (traj_list_.empty() || !costmap_received_) {
-        if (traj_list_.empty()) {
-            ROS_INFO("ZERO OBS COST | REASON: Traj List Empty");
-        }
-        if (!costmap_received_) {
-            ROS_INFO("ZERO OBS COST | REASON: No costmap received");
-        }
+        ...
         return 0.0;
     }
     
-    double max_cost = 0.0;
-    // Define a threshold for what is considered a collision.
-    // In ROS costmaps: 100 is LETHAL, 99 is INSCRIBED_INFLATED_OBSTACLE.
-    // We treat 99 and above as a collision.
-    const uint8_t collision_threshold = 99; 
+    double cost_sum = 0.0;
 
     // Iterate through trajectory 
     for (const auto& pt : traj_list_) {
         int mx, my;
-        // Continue if out of costmap bounds
+        // Conitnue if out of costmap bounds
         if (!worldToCostmap(pt[0], pt[1], mx, my, traj_list_[0][0], traj_list_[0][1]))
             continue;
 
-        uint8_t raw_cost = getCostmapCost(mx, my);
-
-        // 1. Immediate check for collision
-        if (raw_cost >= collision_threshold) {
-             // Path hits an obstacle or gets too close. Return infinity.
-             return std::numeric_limits<double>::infinity();
-        }
-
-        // 2. Track the maximum cost encountered on this path
-        double normalized_cost = static_cast<double>(raw_cost) / 100.0; // normalize 0–1
-        if (normalized_cost > max_cost) {
-            max_cost = normalized_cost;
-        }
+        double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0; // normalize 0–1
+        cost_sum += c;
     }
 
-    // Return the maximum cost encountered scaled up.
-    // The original code scaled the average 0-1 cost by 200.0. We do the same with the max cost.
-    ROS_INFO("obstacle cost= %f,", 200.0 * max_cost);
-    return 200.0 * max_cost;
+    // Return average cost
+    ROS_INFO("obstacle cost= %f,", cost_sum / std::max(1, static_cast<int>(traj_list_.size())));
+    return cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
 }
 
 // --- MODIFIED ---

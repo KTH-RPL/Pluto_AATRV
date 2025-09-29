@@ -187,6 +187,8 @@ class dwa_controller {
         nav_msgs::OccupancyGrid occ_grid_;
         void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
         bool costmap_received_ = false;
+        // Query normalized cost [0,100] for a world point; returns 100 if unknown/out-of-bounds
+        uint8_t query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const;
 
     private:
         ros::NodeHandle nh_;
