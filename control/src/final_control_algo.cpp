@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <thread>
 #include <cmath>
+// Added for DWA trajectory visualization
+#include <visualization_msgs/MarkerArray.h> 
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
@@ -706,6 +708,8 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     
     occ_sub_ = nh_.subscribe("/local_costmap", 1, &dwa_controller::costmap_callback, this);
     
+    // --- NEW --- Initialize visualization publisher
+    traj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("dwa_trajectories", 1);
 }
 
 void dwa_controller::costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
@@ -826,7 +830,9 @@ double dwa_controller::calc_speed_ref_cost(double v) {
     return std::abs(v - ref_velocity_);
 }
 
-// Calculate cost upon each time step and adds, check on this vs calc_away_from_obstacle_cost
+// --- MODIFIED ---
+// Calculate cost upon each time step.
+// CHANGED: Instead of averaging, we now check for immediate collision and return the MAXIMUM cost found.
 double dwa_controller::calc_obstacle_cost() {
     if (traj_list_.empty() || !costmap_received_) {
         if (traj_list_.empty()) {
@@ -838,25 +844,43 @@ double dwa_controller::calc_obstacle_cost() {
         return 0.0;
     }
     
-    double cost_sum = 0.0;
+    double max_cost = 0.0;
+    // Define a threshold for what is considered a collision.
+    // In ROS costmaps: 100 is LETHAL, 99 is INSCRIBED_INFLATED_OBSTACLE.
+    // We treat 99 and above as a collision.
+    const uint8_t collision_threshold = 99; 
 
     // Iterate through trajectory 
     for (const auto& pt : traj_list_) {
         int mx, my;
-        // Conitnue if out of costmap bounds
+        // Continue if out of costmap bounds
         if (!worldToCostmap(pt[0], pt[1], mx, my, traj_list_[0][0], traj_list_[0][1]))
             continue;
 
-        double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0; // normalize 0–1
-        cost_sum += c;
+        uint8_t raw_cost = getCostmapCost(mx, my);
+
+        // 1. Immediate check for collision
+        if (raw_cost >= collision_threshold) {
+             // Path hits an obstacle or gets too close. Return infinity.
+             return std::numeric_limits<double>::infinity();
+        }
+
+        // 2. Track the maximum cost encountered on this path
+        double normalized_cost = static_cast<double>(raw_cost) / 100.0; // normalize 0–1
+        if (normalized_cost > max_cost) {
+            max_cost = normalized_cost;
+        }
     }
 
-    // Return average cost
-    ROS_INFO("obstacle cost= %f,", 200.0 * cost_sum / std::max(1, static_cast<int>(traj_list_.size())));
-    return 200.0 * cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
+    // Return the maximum cost encountered scaled up.
+    // The original code scaled the average 0-1 cost by 200.0. We do the same with the max cost.
+    ROS_INFO("obstacle cost= %f,", 200.0 * max_cost);
+    return 200.0 * max_cost;
 }
 
-// Exponential penalty for moving through high-cost areas, check on this vs calc_obstacle_cost
+// --- MODIFIED ---
+// Exponential penalty for moving through high-cost areas.
+// CHANGED: Use MAX instead of AVERAGE to avoid diluting the penalty.
 double dwa_controller::calc_away_from_obstacle_cost() {
     if (traj_list_.empty() || !costmap_received_) {
         if (traj_list_.empty()) {
@@ -868,7 +892,7 @@ double dwa_controller::calc_away_from_obstacle_cost() {
         return 0.0;
     }
 
-    double cost_sum = 0.0;
+    double max_exp_cost = 0.0;
 
     // Iterate through trajectory
     for (const auto& pt : traj_list_) {
@@ -878,11 +902,15 @@ double dwa_controller::calc_away_from_obstacle_cost() {
             continue;
 
         double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0;
-        cost_sum += std::exp(5.0 * c); // exponential penalty
+        double exp_cost = std::exp(5.0 * c); // exponential penalty
+        
+        if (exp_cost > max_exp_cost) {
+            max_exp_cost = exp_cost;
+        }
     }
 
-    // Return average cost
-    return cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
+    // Return max exponential cost instead of average
+    return max_exp_cost;
 }
 
 // double dwa_controller::obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff) 
@@ -921,6 +949,12 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double worst_mindist = std::numeric_limits<double>::infinity();
     double max_obstacle_cost = 0.0;
     double obs_cost;
+
+    // --- NEW --- Visualization Setup
+    visualization_msgs::MarkerArray traj_markers;
+    int marker_id = 0;
+    // --------------------------------
+
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
 
@@ -945,7 +979,43 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
 
-            if (obs_cost > max_obstacle_cost) {
+            // --- NEW --- Visualization Logic
+            visualization_msgs::Marker traj_marker;
+            // Assuming odom is your fixed frame, change if necessary
+            traj_marker.header.frame_id = "odom"; 
+            traj_marker.header.stamp = ros::Time::now();
+            traj_marker.ns = "dwa_paths";
+            traj_marker.id = marker_id++;
+            traj_marker.type = visualization_msgs::Marker::LINE_STRIP;
+            traj_marker.action = visualization_msgs::Marker::ADD;
+            traj_marker.pose.orientation.w = 1.0;
+            traj_marker.scale.x = 0.02; // Line width
+
+            // Color based on cost
+            if (std::isinf(total_cost)) {
+                // RED for collision/infinite cost
+                 traj_marker.color.r = 1.0; traj_marker.color.g = 0.0; traj_marker.color.b = 0.0; traj_marker.color.a = 1.0;
+            } else {
+                // Green -> Yellow gradient for valid paths
+                // Normalize cost for coloring. 300.0 is an arbitrary scaling factor for visualization.
+                float normalized_cost = std::min(1.0f, static_cast<float>(total_cost / 300.0)); 
+                 traj_marker.color.r = normalized_cost;
+                 traj_marker.color.g = 1.0 - normalized_cost;
+                 traj_marker.color.b = 0.0;
+                 traj_marker.color.a = 0.6; // Slightly transparent
+            }
+
+            for(const auto& pt : traj_list_) {
+                geometry_msgs::Point p;
+                p.x = pt[0];
+                p.y = pt[1];
+                p.z = 0;
+                traj_marker.points.push_back(p);
+            }
+            traj_markers.markers.push_back(traj_marker);
+            // --------------------------------
+
+            if (obs_cost > max_obstacle_cost && !std::isinf(obs_cost)) {
                 max_obstacle_cost = obs_cost;
                 worst_obsi = j;
                 worst_mindist = std::min(worst_mindist, obs_cost);
@@ -958,6 +1028,11 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             }
         }
     }
+    
+    // --- NEW --- Publish the markers
+    traj_pub_.publish(traj_markers);
+    // ------------------------------
+
     // create a DWAResult struct to hold the results
     DWAResult result;
     ROS_INFO("obstacle cost DWA %f", obs_cost);

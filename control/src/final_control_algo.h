@@ -183,6 +183,7 @@ class dwa_controller {
         dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points);
         DWAResult dwa_main_control(double x, double y, double theta, double v, double omega);
         ros::Subscriber occ_sub_;
+        ros::Publisher traj_pub_; // <<< FIX: ADDED DECLARATION HERE
         nav_msgs::OccupancyGrid occ_grid_;
         void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
         bool costmap_received_ = false;
