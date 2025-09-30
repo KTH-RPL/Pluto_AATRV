@@ -852,6 +852,44 @@ double dwa_controller::cross_track_error(double x_r, double y_r, double x_ref, d
     return (y_ref - y_r) * std::cos(theta_ref) - (x_ref - x_r) * std::sin(theta_ref);
 }
 
+// Lookahead heading error
+double dwa_controller::calc_lookahead_heading_cost() {
+    if (traj_list_.empty() || !current_path_ || !target_idx_) {
+        return 0.0;
+    }
+
+    // Get the final state of the simulated trajectory
+    const auto& last_point = traj_list_.back();
+    double final_x = last_point[0];
+    double final_y = last_point[1];
+    double final_theta = last_point[2];
+
+    // Get the current lookahead point from the path
+    int current_target = *target_idx_;
+    if (current_target >= (*current_path_).size()) {
+        return 0.0; // Avoid out of bounds
+    }
+    double lookahead_x = (*current_path_)[current_target].x;
+    double lookahead_y = (*current_path_)[current_target].y;
+
+    // Calculate the angle from the trajectory's end to the lookahead point
+    double angle_to_target = std::atan2(lookahead_y - final_y, lookahead_x - final_x);
+
+    // Calculate the heading error
+    double error = angle_to_target - final_theta;
+
+    // Normalize the error to the range [-PI, PI]
+    while (error > M_PI) {
+        error -= 2.0 * M_PI;
+    }
+    while (error < -M_PI) {
+        error += 2.0 * M_PI;
+    }
+
+    // Cost is the absolute value of the error
+    return std::abs(error);
+}
+
 // CTE cost
 double dwa_controller::calc_path_cost() {
     if (traj_list_.empty() || !current_path_ || !max_path_points_ || !target_idx_ || *max_path_points_ == 0)
@@ -1007,13 +1045,16 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
             obs_cost = calc_obstacle_cost();
 
+            double lookahead_heading_cost = calc_lookahead_heading_cost();
+
             // Check this, basically if no collision, can increase speed to move, this may cause issue, increase speed_ref_bias to maneuver around obstacles
             // if (obs_cost > 0) speed_ref_cost = 0;
 
             double away_cost = calc_away_from_obstacle_cost();
 
             // Experiment by removing some cost if needed
-            double total_cost = path_distance_bias_ * path_cost 
+            double total_cost = path_distance_bias_ * lookahead_heading_cost 
+            // + path_distance_bias_ * path_cost 
             + goal_distance_bias_ * lookahead_cost 
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
