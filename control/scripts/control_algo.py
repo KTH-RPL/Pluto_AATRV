@@ -41,15 +41,15 @@ class DWAController:
         self.current_path = path
         
         # Load DWA parameters from ROS parameter server
-        self.predict_time = rospy.get_param('~dwa_controller/predict_time', 2.0)
-        self.path_distance_bias = rospy.get_param('~dwa_controller/path_distance_bias', 0.0)
-        self.heading_bias = rospy.get_param('~dwa_controller/heading_bias', 25.0)
-        self.goal_distance_bias = rospy.get_param('~dwa_controller/goal_distance_bias', 0.5)
-        self.occdist_scale = rospy.get_param('~dwa_controller/occdist_scale', 10.0)
-        self.speed_ref_bias = rospy.get_param('~dwa_controller/speed_ref_bias', 0.005)
-        self.away_bias = rospy.get_param('~dwa_controller/away_bias', 20.0)
-        self.vx_samples = rospy.get_param('~dwa_controller/vx_samples', 3)
-        self.omega_samples = rospy.get_param('~dwa_controller/omega_samples', 5)
+        self.predict_time = rospy.get_param('dwa_controller/predict_time', 2.0)
+        self.path_distance_bias = rospy.get_param('dwa_controller/path_distance_bias', 0.0)
+        self.heading_bias = rospy.get_param('dwa_controller/heading_bias', 25.0)
+        self.goal_distance_bias = rospy.get_param('dwa_controller/goal_distance_bias', 0.5)
+        self.occdist_scale = rospy.get_param('dwa_controller/occdist_scale', 10.0)
+        self.speed_ref_bias = rospy.get_param('dwa_controller/speed_ref_bias', 0.005)
+        self.away_bias = rospy.get_param('dwa_controller/away_bias', 20.0)
+        self.vx_samples = rospy.get_param('dwa_controller/vx_samples', 3)
+        self.omega_samples = rospy.get_param('dwa_controller/omega_samples', 5)
         self.dt_dwa = rospy.get_param('preview_controller/dt_dwa', 0.1)
         self.ref_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
         
