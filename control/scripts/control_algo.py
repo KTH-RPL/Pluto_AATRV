@@ -206,7 +206,7 @@ class DWAController:
         min_cost = float('inf')
         best_v, best_omega = state.v, state.omega
         max_obstacle_cost = 0.0
-
+        best_traj_away_cost = 0.0 
         v_range = np.linspace(v_min, v_max, self.vx_samples)
         omega_range = np.linspace(omega_min, omega_max, self.omega_samples)
 
@@ -228,27 +228,20 @@ class DWAController:
                               self.occdist_scale * obs_cost +
                               self.speed_ref_bias * speed_ref_cost +
                               self.away_bias * away_cost)
-
-                print(f"T {total_cost} || \
-                        CTE {self.path_distance_bias * crosstrack_cost}  | \
-                        H {self.heading_bias * heading_cost}  | \
-                        LA {self.goal_distance_bias * lookahead_cost}  | \
-                        OC {self.occdist_scale * obs_cost}  | \
-                        SR {self.speed_ref_bias * speed_ref_cost}  | \
-                        AB {self.away_bias * away_cost}")
                 
-                if obs_cost > max_obstacle_cost:
-                    max_obstacle_cost = obs_cost
+                # if obs_cost > max_obstacle_cost:
+                #     max_obstacle_cost = obs_cost
 
                 if total_cost < min_cost:
                     min_cost = total_cost
                     best_v = v_sample
                     best_omega = omega_sample
+                    best_traj_away_cost = away_cost*self.away_bias
         
         result = DWAResult()
         result.best_v = best_v
         result.best_omega = best_omega
-        result.obs_cost = self.occdist_scale * max_obstacle_cost
+        result.obs_cost = best_traj_away_cost
         
         rospy.loginfo_throttle(1.0, f"DWA max obstacle scaled cost = {result.obs_cost:.2f}")
         return result
