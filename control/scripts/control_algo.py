@@ -212,7 +212,7 @@ class DWAController:
             
             mx, my = self.point_in_costmap_frame_to_map_indices(p_costmap_frame.point.x, p_costmap_frame.point.y)
             c = self.get_costmap_cost(mx, my) / 100.0
-            exp_cost = math.exp(5.0 * c)
+            exp_cost = math.exp(4.0 * c)
             if exp_cost > max_exp_cost:
                 max_exp_cost = exp_cost
         
@@ -266,13 +266,13 @@ class DWAController:
                               self.speed_ref_bias * speed_ref_cost +
                               self.away_bias * away_cost)
                             
-                print(f"T {total_cost:.2f} || "
-                    f"CTE {self.path_distance_bias * crosstrack_cost:.2f}  | "
-                    f"H {self.heading_bias * heading_cost:.2f}  | "
-                    f"LA {self.goal_distance_bias * lookahead_cost:.2f}  | "
-                    f"OC {self.occdist_scale * obs_cost:.2f}  | "
-                    f"SR {self.speed_ref_bias * speed_ref_cost:.2f}  | "
-                    f"AB {self.away_bias * away_cost:.2f}")
+                # print(f"T {total_cost:.2f} || "
+                #     f"CTE {self.path_distance_bias * crosstrack_cost:.2f}  | "
+                #     f"H {self.heading_bias * heading_cost:.2f}  | "
+                #     f"LA {self.goal_distance_bias * lookahead_cost:.2f}  | "
+                #     f"OC {self.occdist_scale * obs_cost:.2f}  | "
+                #     f"SR {self.speed_ref_bias * speed_ref_cost:.2f}  | "
+                #     f"AB {self.away_bias * away_cost:.2f}")
                 
                 # if obs_cost > max_obstacle_cost:
                 #     max_obstacle_cost = obs_cost
@@ -509,6 +509,7 @@ class PreviewController:
             if abs(lookahead_heading_error) < self.max_lookahead_heading_error:
                 self.initial_alignment = True
             else:
+                rospy.loginfo("initial alignment running")
                 self.bound_vel(0.0)
                 self.bound_omega(-self.kp_adjust_cte * lookahead_heading_error)
                 self.publish_cmd_vel()

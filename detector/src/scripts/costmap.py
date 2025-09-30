@@ -35,7 +35,7 @@ class CostmapGeneratorNode:
         self.max_cost = rospy.get_param('~max_cost', 100)
 
         # <<< NEW: Obstacle Memory Parameter
-        self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 1.0)) # seconds
+        self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 5.0)) # seconds
 
         # <<< NEW: TF2 listener setup
         self.tf_buffer = tf2_ros.Buffer()
