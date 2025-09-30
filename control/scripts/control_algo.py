@@ -41,15 +41,15 @@ class DWAController:
         self.current_path = path
         
         # Load DWA parameters from ROS parameter server
-        self.predict_time = rospy.get_param('~dwa_controller/predict_time', 2.0)
-        self.path_distance_bias = rospy.get_param('~dwa_controller/path_distance_bias', 0.0)
-        self.heading_bias = rospy.get_param('~dwa_controller/heading_bias', 25.0)
-        self.goal_distance_bias = rospy.get_param('~dwa_controller/goal_distance_bias', 0.5)
-        self.occdist_scale = rospy.get_param('~dwa_controller/occdist_scale', 10.0)
-        self.speed_ref_bias = rospy.get_param('~dwa_controller/speed_ref_bias', 0.005)
-        self.away_bias = rospy.get_param('~dwa_controller/away_bias', 20.0)
-        self.vx_samples = rospy.get_param('~dwa_controller/vx_samples', 3)
-        self.omega_samples = rospy.get_param('~dwa_controller/omega_samples', 5)
+        self.predict_time = rospy.get_param('dwa_controller/predict_time', 2.0)
+        self.path_distance_bias = rospy.get_param('dwa_controller/path_distance_bias', 0.0)
+        self.heading_bias = rospy.get_param('dwa_controller/heading_bias', 25.0)
+        self.goal_distance_bias = rospy.get_param('dwa_controller/goal_distance_bias', 0.5)
+        self.occdist_scale = rospy.get_param('dwa_controller/occdist_scale', 10.0)
+        self.speed_ref_bias = rospy.get_param('dwa_controller/speed_ref_bias', 0.005)
+        self.away_bias = rospy.get_param('dwa_controller/away_bias', 20.0)
+        self.vx_samples = rospy.get_param('dwa_controller/vx_samples', 3)
+        self.omega_samples = rospy.get_param('dwa_controller/omega_samples', 5)
         self.dt_dwa = rospy.get_param('preview_controller/dt_dwa', 0.1)
         self.ref_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
         
@@ -163,6 +163,42 @@ class DWAController:
         
         return cost_sum / len(self.traj_list)
 
+    def calc_away_from_obstacle_cost(self, robot_x: float, robot_y: float) -> float:
+        if not self.traj_list.any() or not self.costmap_received:
+            return 0.0
+        
+        max_exp_cost = 0.0
+        for pt in self.traj_list:
+            mx, my = self.world_to_costmap(pt[0], pt[1], robot_x, robot_y)
+            # Normalize cost from [0, 100] to [0.0, 1.0]
+            c = self.get_costmap_cost(mx, my) / 100.0
+            
+            # Exponential penalty
+            exp_cost = math.exp(5.0 * c)
+            
+            if exp_cost > max_exp_cost:
+                max_exp_cost = exp_cost
+        
+        return max_exp_cost
+
+    def _crosstrack_error(self, x_r: float, y_r: float, x_ref: float, y_ref: float, theta_ref: float) -> float:
+        return (y_ref - y_r) * math.cos(theta_ref) - (x_ref - x_r) * math.sin(theta_ref)
+
+    def calc_crosstrack_cost(self, target_idx: int) -> float:
+        if not self.traj_list.any() or not self.current_path:
+            return 0.0
+
+        final_x, final_y, _ = self.traj_list[-1]
+
+        if target_idx >= len(self.current_path):
+            return 0.0
+
+        ref_wp = self.current_path[target_idx]
+        
+        cte = self._crosstrack_error(final_x, final_y, ref_wp.x, ref_wp.y, ref_wp.theta)
+        
+        return abs(cte)
+
     def dwa_main_control(self, state: RobotState, target_idx: int) -> DWAResult:
         dw = self.calc_dynamic_window(state.v, state.omega)
         v_min, v_max, omega_min, omega_max = dw
@@ -178,15 +214,20 @@ class DWAController:
             for omega_sample in omega_range:
                 self.traj_list = self.calc_trajectory(state.x, state.y, state.theta, v_sample, omega_sample)
                 
+                crosstrack_cost = self.calc_crosstrack_cost(target_idx)
                 heading_cost = self.calc_lookahead_heading_cost(target_idx)
                 lookahead_cost = self.calc_lookahead_cost(target_idx)
                 speed_ref_cost = self.calc_speed_ref_cost(v_sample)
                 obs_cost = self.calc_obstacle_cost(state.x, state.y)
+                away_cost = self.calc_away_from_obstacle_cost(state.x, state.y)
+
                 
-                total_cost = (self.heading_bias * heading_cost +
+                total_cost = (self.path_distance_bias * crosstrack_cost +
+                              self.heading_bias * heading_cost +
                               self.goal_distance_bias * lookahead_cost +
                               self.occdist_scale * obs_cost +
-                              self.speed_ref_bias * speed_ref_cost)
+                              self.speed_ref_bias * speed_ref_cost +
+                              self.away_bias * away_cost)
                 
                 if obs_cost > max_obstacle_cost:
                     max_obstacle_cost = obs_cost
