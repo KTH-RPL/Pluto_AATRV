@@ -63,6 +63,10 @@ preview_controller:
   point_spacing: 0.3
   use_start_top: true
 
+  # Hystherisis
+  dwa_activation_cost_thresh: 10.0
+  preview_reactivation_cost_thresh: 5.0
+
 
 dwa_controller:
   # Prediction and sampling parameters
@@ -79,3 +83,4 @@ dwa_controller:
   occdist_scale: 50.0
   speed_ref_bias: 10.0
   away_bias: 20.0
+  heading_bias: 25.0

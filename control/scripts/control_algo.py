@@ -230,6 +230,9 @@ class PreviewController:
     def load_params(self):
         # Path parameters
         self.path_type = rospy.get_param('~preview_controller/path_type', 'snake')
+        print(path_type)
+        import time
+        time.sleep(9999)
         self.path_amplitude = rospy.get_param('~preview_controller/amplitude', 4.0)
         self.path_wavelength = rospy.get_param('~preview_controller/wavelength', 6.0)
         self.path_length = rospy.get_param('~preview_controller/length', 10.0)
