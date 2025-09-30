@@ -78,7 +78,7 @@ class DWAController:
         self.occ_grid = msg
         self.costmap_received = True
 
-    def world_to_costmap(self, x: float, y: float) -> Tuple[int, int]:
+    def point_in_costmap_frame_to_map_indices(self, x: float, y: float) -> Tuple[int, int]:
         if not self.costmap_received:
             return -1, -1
 
