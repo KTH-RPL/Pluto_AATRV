@@ -237,6 +237,7 @@ class dwa_controller {
         double calc_lookahead_cost();
         double calc_away_from_obstacle_cost();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
+        double calc_lookahead_heading_cost()
         bool worldToCostmap(double x, double y, int& mx, int& my, double robot_x, double robot_y);
         uint8_t getCostmapCost(int mx, int my);
 
