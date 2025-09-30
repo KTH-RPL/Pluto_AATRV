@@ -50,15 +50,15 @@ class DWAController:
         self.away_bias = rospy.get_param('~dwa_controller/away_bias', 20.0)
         self.vx_samples = rospy.get_param('~dwa_controller/vx_samples', 3)
         self.omega_samples = rospy.get_param('~dwa_controller/omega_samples', 5)
-        self.dt_dwa = rospy.get_param('~preview_controller/dt_dwa', 0.1)
-        self.ref_velocity = rospy.get_param('~preview_controller/linear_velocity', 0.3)
+        self.dt_dwa = rospy.get_param('preview_controller/dt_dwa', 0.1)
+        self.ref_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
         
         # Shared parameters with PreviewController
-        self.vel_acc = rospy.get_param('~preview_controller/vel_acc', 0.5)
-        self.omega_acc = rospy.get_param('~preview_controller/omega_acc', 0.4)
-        self.min_speed = rospy.get_param('~preview_controller/min_speed', 0.0)
-        self.max_speed = rospy.get_param('~preview_controller/max_speed', 0.3)
-        self.max_omega = rospy.get_param('~preview_controller/max_omega', 0.5)
+        self.vel_acc = rospy.get_param('preview_controller/vel_acc', 0.5)
+        self.omega_acc = rospy.get_param('preview_controller/omega_acc', 0.4)
+        self.min_speed = rospy.get_param('preview_controller/min_speed', 0.0)
+        self.max_speed = rospy.get_param('preview_controller/max_speed', 0.3)
+        self.max_omega = rospy.get_param('preview_controller/max_omega', 0.5)
         
         self.costmap_received = False
         self.occ_grid = None
@@ -229,38 +229,35 @@ class PreviewController:
 
     def load_params(self):
         # Path parameters
-        self.path_type = rospy.get_param('~preview_controller/path_type', 'snake')
-        print(path_type)
-        import time
-        time.sleep(9999)
-        self.path_amplitude = rospy.get_param('~preview_controller/amplitude', 4.0)
-        self.path_wavelength = rospy.get_param('~preview_controller/wavelength', 6.0)
-        self.path_length = rospy.get_param('~preview_controller/length', 10.0)
-        self.path_point_spacing = rospy.get_param('~preview_controller/point_spacing', 0.3)
-        self.straight_path_distance = rospy.get_param('~preview_controller/straight_path_distance', 5.0)
+        self.path_type = rospy.get_param('preview_controller/path_type', 'snake')
+        self.path_amplitude = rospy.get_param('preview_controller/amplitude', 4.0)
+        self.path_wavelength = rospy.get_param('preview_controller/wavelength', 6.0)
+        self.path_length = rospy.get_param('preview_controller/length', 10.0)
+        self.path_point_spacing = rospy.get_param('preview_controller/point_spacing', 0.3)
+        self.straight_path_distance = rospy.get_param('preview_controller/straight_path_distance', 5.0)
         
         # Controller parameters
-        self.linear_velocity = rospy.get_param('~preview_controller/linear_velocity', 0.3)
-        self.dt = rospy.get_param('~preview_controller/preview_dt', 0.1)
-        self.max_vel = rospy.get_param('~preview_controller/max_vel', 0.3)
-        self.max_omega = rospy.get_param('~preview_controller/max_omega', 0.6)
-        self.vel_acc = rospy.get_param('~preview_controller/vel_acc', 0.5)
-        self.omega_acc = rospy.get_param('~preview_controller/omega_acc', 0.4)
-        self.lookahead_distance = rospy.get_param('~preview_controller/lookahead_distance', 0.5)
-        self.max_lookahead_heading_error = rospy.get_param('~preview_controller/max_lookahead_heading_error', 0.2)
-        self.kp_adjust_cte = rospy.get_param('~preview_controller/kp_adjust_cte', 2.0)
-        self.goal_distance_threshold = rospy.get_param('~preview_controller/goal_distance_threshold', 0.2)
-        self.goal_reduce_factor = rospy.get_param('~preview_controller/goal_reduce_factor', 0.5)
+        self.linear_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
+        self.dt = rospy.get_param('preview_controller/preview_dt', 0.1)
+        self.max_vel = rospy.get_param('preview_controller/max_vel', 0.3)
+        self.max_omega = rospy.get_param('preview_controller/max_omega', 0.6)
+        self.vel_acc = rospy.get_param('preview_controller/vel_acc', 0.5)
+        self.omega_acc = rospy.get_param('preview_controller/omega_acc', 0.4)
+        self.lookahead_distance = rospy.get_param('preview_controller/lookahead_distance', 0.5)
+        self.max_lookahead_heading_error = rospy.get_param('preview_controller/max_lookahead_heading_error', 0.2)
+        self.kp_adjust_cte = rospy.get_param('preview_controller/kp_adjust_cte', 2.0)
+        self.goal_distance_threshold = rospy.get_param('preview_controller/goal_distance_threshold', 0.2)
+        self.goal_reduce_factor = rospy.get_param('preview_controller/goal_reduce_factor', 0.5)
         
         # Hysteresis thresholds
-        self.dwa_activation_cost_thresh = rospy.get_param('~preview_controller/dwa_activation_cost_thresh', 10.0)
-        self.preview_reactivation_cost_thresh = rospy.get_param('~preview_controller/preview_reactivation_cost_thresh', 5.0)
+        self.dwa_activation_cost_thresh = rospy.get_param('preview_controller/dwa_activation_cost_thresh', 10.0)
+        self.preview_reactivation_cost_thresh = rospy.get_param('preview_controller/preview_reactivation_cost_thresh', 5.0)
 
         # Preview control matrices parameters
-        self.Q_params = rospy.get_param('~preview_controller/Q_params', [5.0, 6.0, 5.0])
-        self.R_param = rospy.get_param('~preview_controller/R', 1.0)
-        self.preview_steps = rospy.get_param('~preview_controller/preview_steps', 5) # Added from constructor default
-        self.preview_loop_thresh = rospy.get_param('~preview_controller/preview_loop_thresh', 1e-5)
+        self.Q_params = rospy.get_param('preview_controller/Q_params', [5.0, 6.0, 5.0])
+        self.R_param = rospy.get_param('preview_controller/R', 1.0)
+        self.preview_steps = rospy.get_param('preview_controller/preview_steps', 5) # Added from constructor default
+        self.preview_loop_thresh = rospy.get_param('preview_controller/preview_loop_thresh', 1e-5)
 
     def setup_ros_communications(self):
         self.robot_vel_pub = rospy.Publisher("/atrv/cmd_vel", Twist, queue_size=10)

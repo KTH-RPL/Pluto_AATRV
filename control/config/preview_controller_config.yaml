@@ -82,5 +82,5 @@ dwa_controller:
   goal_distance_bias: 8.0
   occdist_scale: 50.0
   speed_ref_bias: 10.0
-  away_bias: 20.0
+  away_bias: 2.0
   heading_bias: 25.0

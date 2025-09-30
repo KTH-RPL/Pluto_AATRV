@@ -970,8 +970,11 @@ double dwa_controller::calc_away_from_obstacle_cost() {
         return 0.0;
     }
 
-    double max_exp_cost = 0.0;
+    double exp_cost = 0.0;
+    double total_exp_cost = 0.0;
+    int item = 0;
 
+    
     // Iterate through trajectory
     for (const auto& pt : traj_list_) {
         int mx, my;
@@ -981,14 +984,18 @@ double dwa_controller::calc_away_from_obstacle_cost() {
 
         double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0;
         double exp_cost = std::exp(5.0 * c); // exponential penalty
+
+        total_exp_cost =  total_exp_cost + exp_cost;
+        item = item + 1;
         
-        if (exp_cost > max_exp_cost) {
-            max_exp_cost = exp_cost;
-        }
+        // if (exp_cost > max_exp_cost) {
+        //     max_exp_cost = exp_cost;
+        // }
     }
 
     // Return max exponential cost instead of average
-    return max_exp_cost;
+    // return max_exp_cost;
+    return total_exp_cost/item;
 }
 
 // double dwa_controller::obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff) 
@@ -1045,7 +1052,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
             obs_cost = calc_obstacle_cost();
 
-            double lookahead_heading_cost = calc_lookahead_heading_cost();
+            //  double lookahead_heading_cost = calc_lookahead_heading_cost();
 
             // Check this, basically if no collision, can increase speed to move, this may cause issue, increase speed_ref_bias to maneuver around obstacles
             // if (obs_cost > 0) speed_ref_cost = 0;
@@ -1053,7 +1060,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double away_cost = calc_away_from_obstacle_cost();
 
             // Experiment by removing some cost if needed
-            double total_cost = path_distance_bias_ * lookahead_heading_cost 
+            double total_cost = path_distance_bias_ * path_cost //  lookahead_heading_cost 
             // + path_distance_bias_ * path_cost 
             + goal_distance_bias_ * lookahead_cost 
             + occdist_scale_ * obs_cost 

@@ -30,12 +30,12 @@ class CostmapGeneratorNode:
         self.map_frame = rospy.get_param('~map_frame', 'base_link')
         
         # Gradient Inflation Parameters
-        self.inflation_radius = rospy.get_param('~inflation_radius', 0.7)
+        self.inflation_radius = rospy.get_param('~inflation_radius', 0.4)
         self.gradient_end_radius = rospy.get_param('~gradient_end_radius', 1.2)
         self.max_cost = rospy.get_param('~max_cost', 100)
 
         # <<< NEW: Obstacle Memory Parameter
-        self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 5.0)) # seconds
+        self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 1.0)) # seconds
 
         # <<< NEW: TF2 listener setup
         self.tf_buffer = tf2_ros.Buffer()
