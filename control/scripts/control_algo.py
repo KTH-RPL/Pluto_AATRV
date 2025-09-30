@@ -7,10 +7,12 @@ from dataclasses import dataclass, field
 from typing import List, Tuple
 
 # Import ROS message types
-from geometry_msgs.msg import Twist, PoseStamped, Point
+from geometry_msgs.msg import Twist, PoseStamped, PointStamped
 from nav_msgs.msg import Path, OccupancyGrid
 from std_msgs.msg import Float64, Bool
 from visualization_msgs.msg import MarkerArray, Marker
+import tf2_ros
+import tf2_geometry_msgs
 
 # === Data Structures (like C++ structs) ===
 
@@ -66,25 +68,27 @@ class DWAController:
 
         self.occ_sub = rospy.Subscriber("/local_costmap", OccupancyGrid, self.costmap_callback)
         self.traj_pub = rospy.Publisher("dwa_trajectories", MarkerArray, queue_size=1)
+
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.world_frame = "odom" # Or whatever your fixed world frame is
+
         
     def costmap_callback(self, msg: OccupancyGrid):
         self.occ_grid = msg
         self.costmap_received = True
 
-    def world_to_costmap(self, x: float, y: float, robot_x: float, robot_y: float) -> Tuple[int, int]:
+    def world_to_costmap(self, x: float, y: float) -> Tuple[int, int]:
         if not self.costmap_received:
             return -1, -1
-        
-        rel_x = x - robot_x
-        rel_y = y - robot_y
-        
+
         origin_x = self.occ_grid.info.origin.position.x
         origin_y = self.occ_grid.info.origin.position.y
         resolution = self.occ_grid.info.resolution
         
-        mx = int((rel_x - origin_x) / resolution)
-        my = int((rel_y - origin_y) / resolution)
-        
+        mx = int((x - origin_x) / resolution)
+        my = int((y - origin_y) / resolution)
+
         return mx, my
         
     def get_costmap_cost(self, mx: int, my: int) -> int:
@@ -152,35 +156,68 @@ class DWAController:
     def calc_speed_ref_cost(self, v: float) -> float:
         return abs(v - self.ref_velocity)
 
-    def calc_obstacle_cost(self, robot_x: float, robot_y: float) -> float:
+    def calc_obstacle_cost(self) -> float: # No longer needs robot_x, robot_y
         if not self.traj_list.any() or not self.costmap_received:
             return 0.0
         
+        try:
+            # Get the single transform from world frame to the costmap's frame
+            transform = self.tf_buffer.lookup_transform(
+                self.occ_grid.header.frame_id, # Target frame (e.g., 'base_link')
+                self.world_frame,              # Source frame (e.g., 'odom')
+                rospy.Time(0),                 # Get the latest available transform
+                rospy.Duration(0.1)            # Timeout
+            )
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn_throttle(1.0, f"TF transform error in DWA: {e}")
+            return float('inf') # Return a high cost if transform fails
+
         cost_sum = 0.0
         for pt in self.traj_list:
-            mx, my = self.world_to_costmap(pt[0], pt[1], robot_x, robot_y)
+            # Create a PointStamped message for transformation
+            p_world = PointStamped()
+            p_world.header.frame_id = self.world_frame
+            p_world.header.stamp = rospy.Time(0) # Not critical for this transform
+            p_world.point.x = pt[0]
+            p_world.point.y = pt[1]
+
+            # Transform the point
+            p_costmap_frame = tf2_geometry_msgs.do_transform_point(p_world, transform)
+
+            # Now check the cost using the transformed point
+            mx, my = self.point_in_costmap_frame_to_map_indices(p_costmap_frame.point.x, p_costmap_frame.point.y)
             cost_sum += self.get_costmap_cost(mx, my) / 100.0 # Normalize cost 0-1
         
         return cost_sum / len(self.traj_list)
 
-    def calc_away_from_obstacle_cost(self, robot_x: float, robot_y: float) -> float:
+    # You must make the IDENTICAL change to calc_away_from_obstacle_cost
+    def calc_away_from_obstacle_cost(self) -> float:
         if not self.traj_list.any() or not self.costmap_received:
             return 0.0
         
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.occ_grid.header.frame_id, self.world_frame, rospy.Time(0), rospy.Duration(0.1))
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn_throttle(1.0, f"TF transform error in DWA: {e}")
+            return float('inf')
+
         max_exp_cost = 0.0
         for pt in self.traj_list:
-            mx, my = self.world_to_costmap(pt[0], pt[1], robot_x, robot_y)
-            # Normalize cost from [0, 100] to [0.0, 1.0]
+            p_world = PointStamped()
+            p_world.header.frame_id = self.world_frame
+            p_world.point.x = pt[0]
+            p_world.point.y = pt[1]
+            p_costmap_frame = tf2_geometry_msgs.do_transform_point(p_world, transform)
+            
+            mx, my = self.point_in_costmap_frame_to_map_indices(p_costmap_frame.point.x, p_costmap_frame.point.y)
             c = self.get_costmap_cost(mx, my) / 100.0
-            
-            # Exponential penalty
             exp_cost = math.exp(5.0 * c)
-            
             if exp_cost > max_exp_cost:
                 max_exp_cost = exp_cost
         
         return max_exp_cost
-
+        
     def _crosstrack_error(self, x_r: float, y_r: float, x_ref: float, y_ref: float, theta_ref: float) -> float:
         return (y_ref - y_r) * math.cos(theta_ref) - (x_ref - x_r) * math.sin(theta_ref)
 
