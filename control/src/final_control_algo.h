@@ -13,6 +13,7 @@
 #include <std_msgs/Float64.h> // Include for debug message type
 #include <std_msgs/Bool.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <string>
 
 struct Waypoint {
     double x;
@@ -162,6 +163,11 @@ class PreviewController {
 
         double kp_adjust_cte;
         double obst_cost_thresh;
+        // Hysteresis thresholds for switching between controllers
+        double dwa_activation_cost_thresh_;
+        double preview_reactivation_cost_thresh_;
+        // Track which controller is currently active ("DWA" or "PREVIEW")
+        std::string active_controller_;
         double stop_robot_cost_thresh;
         double goal_reduce_factor;
         double robot_x;

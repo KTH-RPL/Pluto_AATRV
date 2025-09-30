@@ -87,8 +87,11 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     std::vector<double> default_Q = {5.0, 6.0, 5.0};
     nh_.param("preview_controller/Q_params", Q_params_, default_Q);
 
-    // Thresh to switch between DWA and preview control
+    // Thresh to switch between DWA and preview control (legacy single threshold)
     nh_.param("preview_controller/obst_cost_thresh", obst_cost_thresh, 100.0);
+    // New: Hysteresis thresholds inspired by visualiser
+    nh_.param("preview_controller/dwa_activation_cost_thresh", dwa_activation_cost_thresh_, 10.0); // switch PREVIEW -> DWA when > this
+    nh_.param("preview_controller/preview_reactivation_cost_thresh", preview_reactivation_cost_thresh_, 5.0); // switch DWA -> PREVIEW when <= this
 
     // R matrix for the preview controller
     nh_.param("preview_controller/R", R_param_, 1.0);
@@ -104,6 +107,9 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
     omega_acc_bound = omega_acc_ * dt_;
+
+    // Initialize controller mode to DWA by default, matches visualiser default
+    active_controller_ = "DWA";
 }
 
 void PreviewController::stop_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
@@ -480,24 +486,42 @@ bool PreviewController::run_control(bool is_last_goal) {
         boundvel(goal_distance*linear_velocity_*goal_reduce_factor);
     else
         boundvel(linear_velocity_);
-    // Call DWA controller
+    // Evaluate DWA each cycle to compute best sample and max obstacle cost
     DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
-    ROS_INFO("obstacle cost if %f", dwa_result.obs_cost);
+    ROS_INFO("DWA max obstacle cost = %f", dwa_result.obs_cost);
 
-    // DWA cause obstacle too close, add condition to stop robot if too close to obstacle or in obstacle
-    if (dwa_result.obs_cost > obst_cost_thresh) {
+    // Hysteresis switching between PREVIEW and DWA
+    bool use_preview = false;
+    if (active_controller_ == std::string("PREVIEW")) {
+        if (dwa_result.obs_cost > dwa_activation_cost_thresh_) {
+            use_preview = false; // switch to DWA
+            ROS_WARN("SWITCH: PREVIEW -> DWA (cost %.2f > %.2f)", dwa_result.obs_cost, dwa_activation_cost_thresh_);
+        } else {
+            use_preview = true; // stay on preview
+        }
+    } else { // active_controller_ == "DWA"
+        if (dwa_result.obs_cost <= preview_reactivation_cost_thresh_) {
+            use_preview = true; // switch back to preview
+            ROS_WARN("SWITCH: DWA -> PREVIEW (cost %.2f <= %.2f)", dwa_result.obs_cost, preview_reactivation_cost_thresh_);
+        } else {
+            use_preview = false; // stay on DWA
+        }
+    }
+
+    // If DWA trajectories are all colliding (represented by inf in visualiser), here we can't detect inf,
+    // but if no costmap yet, force DWA for safety; otherwise respect use_preview decision.
+    if (!dwa_controller_ptr->costmap_received_) {
+        use_preview = false;
+    }
+
+    if (!use_preview) {
+        // Use DWA command
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
-        // if (dwa_result.obs_cost > stop_robot_cost_thresh) {
-        //     v_ = 0.0;
-        //     omega_ = 0.0;
-        //     ROS_WARN("Obstacle too close! Stopping robot.");
-        // }
-        ROS_INFO("DWA result: v = %f, omega = %f", v_, omega_);
-    }     
-    else 
-    // Call preview Controller
-    {
+        active_controller_ = "DWA";
+        ROS_INFO("Controller: DWA | v=%.3f, omega=%.3f", v_, omega_);
+    } else {
+        // Use preview controller
         if (!bounded_vel)
             // Increase vel to the target vel
             boundvel(linear_velocity_);
@@ -523,7 +547,8 @@ bool PreviewController::run_control(bool is_last_goal) {
         pc_msg.data = path_curvature_;
         path_curvature_pub_.publish(pc_msg);
         // ------------------------------
-        ROS_INFO("Preview Control: v = %f, omega = %f", v_, omega_);
+        active_controller_ = "PREVIEW";
+        ROS_INFO("Controller: PREVIEW | v=%.3f, omega=%.3f", v_, omega_);
     }
 
     if(!bounded_omega)
@@ -801,7 +826,9 @@ uint8_t dwa_controller::getCostmapCost(int mx, int my) {
 std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) {
     std::vector<double> Vs = {min_speed_, max_speed_, -max_omega_, max_omega_};
     std::vector<double> Vd = {v - vel_acc_ * dt_dwa_, v + vel_acc_ * dt_dwa_, omega - omega_acc_ * dt_dwa_, omega + omega_acc_ * dt_dwa_};
-    std::vector<double> vr = {std::min(Vs[0], Vd[0]), std::min(Vs[1], Vd[1]), std::max(Vs[2], Vd[2]), std::min(Vs[3], Vd[3])};
+    // v_min = max(Vs_min, Vd_min), v_max = min(Vs_max, Vd_max)
+    // o_min = max(Vs_o_min, Vd_o_min), o_max = min(Vs_o_max, Vd_o_max)
+    std::vector<double> vr = {std::max(Vs[0], Vd[0]), std::min(Vs[1], Vd[1]), std::max(Vs[2], Vd[2]), std::min(Vs[3], Vd[3])};
     return vr;
 }
 
@@ -885,9 +912,10 @@ double dwa_controller::calc_obstacle_cost() {
         cost_sum += c;
     }
 
-    // Return average cost
-    ROS_INFO("obstacle cost= %f,", cost_sum / std::max(1, static_cast<int>(traj_list_.size())));
-    return cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
+    // Return average cost (normalized 0-1)
+    double avg_cost = cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
+    ROS_INFO("Obstacle avg cost (0-1) = %f", avg_cost);
+    return avg_cost;
 }
 
 // --- MODIFIED ---
@@ -1065,9 +1093,11 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
 
     // create a DWAResult struct to hold the results
     DWAResult result;
-    ROS_INFO("obstacle cost DWA %f", obs_cost);
+    ROS_INFO("DWA max obstacle avg cost (0-1) = %f", max_obstacle_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
-    result.obs_cost = max_obstacle_cost;
+    // Scale to match visualiser hysteresis, where thresholds were ~10 and 5 (post-weighting).
+    // We emulate by multiplying normalized cost with occdist_scale_ (default 10) to keep similar magnitude.
+    result.obs_cost = occdist_scale_ * max_obstacle_cost;
     return result;
 }

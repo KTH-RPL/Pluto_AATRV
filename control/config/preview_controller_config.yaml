@@ -12,6 +12,9 @@ preview_controller:
   
   # Switch between DWA and preview control, do ROS_LOG of obstacle cost to find appropriate value
   obst_cost_thresh: 10.0
+  # Hysteresis thresholds for switching controllers (visualiser parity)
+  dwa_activation_cost_thresh: 10.0           # PREVIEW -> DWA when max obs cost > this
+  preview_reactivation_cost_thresh: 5.0      # DWA -> PREVIEW when max obs cost <= this
 
 
   # Robot physical properties
@@ -47,7 +50,6 @@ preview_controller:
   max_speed: 0.3
   dt_dwa: 0.1
   stop_cost: 200.0
-  obst_cost_thresh: 100.0
   goal_reduce_factor: 0.5
 
 
@@ -64,15 +66,16 @@ preview_controller:
 
 dwa_controller:
   # Prediction and sampling parameters
-  predict_time: 2.0
+  predict_time: 4.0
 
   # Smaller samples means faster computation
-  vx_samples: 3
-  omega_samples: 5
+  vx_samples: 8
+  omega_samples: 10
   
   # Cost function weights
-  path_distance_bias: 20.0
-  goal_distance_bias: 0.5
-  occdist_scale: 10.0
-  speed_ref_bias: 5
+  # Set weights to match updated visualiser defaults
+  path_distance_bias: 2.0
+  goal_distance_bias: 8.0
+  occdist_scale: 50.0
+  speed_ref_bias: 10.0
   away_bias: 20.0
