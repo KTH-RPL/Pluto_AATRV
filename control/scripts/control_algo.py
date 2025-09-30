@@ -230,12 +230,12 @@ class DWAController:
                               self.away_bias * away_cost)
 
                 print(f"T {total_cost} || \
-                        CTE {crosstrack_cost}  | \
-                        H {heading_cost}  | \
-                        LA {lookahead_cost}  | \
-                        OC {obstacle_cost}  | \
-                        SR {speed_ref_cost}  | \
-                        AB {away_cost}")
+                        CTE {self.path_distance_bias * crosstrack_cost}  | \
+                        H {self.heading_bias * heading_cost}  | \
+                        LA {self.goal_distance_bias * lookahead_cost}  | \
+                        OC {self.occdist_scale * obs_cost}  | \
+                        SR {self.speed_ref_bias * speed_ref_cost}  | \
+                        AB {self.away_bias * away_cost}")
                 
                 if obs_cost > max_obstacle_cost:
                     max_obstacle_cost = obs_cost
