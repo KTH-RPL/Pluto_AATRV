@@ -50,15 +50,15 @@ class DWAController:
         self.away_bias = rospy.get_param('~dwa_controller/away_bias', 20.0)
         self.vx_samples = rospy.get_param('~dwa_controller/vx_samples', 3)
         self.omega_samples = rospy.get_param('~dwa_controller/omega_samples', 5)
-        self.dt_dwa = rospy.get_param('~preview_controller/dt_dwa', 0.1)
-        self.ref_velocity = rospy.get_param('~preview_controller/linear_velocity', 0.3)
+        self.dt_dwa = rospy.get_param('preview_controller/dt_dwa', 0.1)
+        self.ref_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
         
         # Shared parameters with PreviewController
-        self.vel_acc = rospy.get_param('~preview_controller/vel_acc', 0.5)
-        self.omega_acc = rospy.get_param('~preview_controller/omega_acc', 0.4)
-        self.min_speed = rospy.get_param('~preview_controller/min_speed', 0.0)
-        self.max_speed = rospy.get_param('~preview_controller/max_speed', 0.3)
-        self.max_omega = rospy.get_param('~preview_controller/max_omega', 0.5)
+        self.vel_acc = rospy.get_param('preview_controller/vel_acc', 0.5)
+        self.omega_acc = rospy.get_param('preview_controller/omega_acc', 0.4)
+        self.min_speed = rospy.get_param('preview_controller/min_speed', 0.0)
+        self.max_speed = rospy.get_param('preview_controller/max_speed', 0.3)
+        self.max_omega = rospy.get_param('preview_controller/max_omega', 0.5)
         
         self.costmap_received = False
         self.occ_grid = None
@@ -163,6 +163,42 @@ class DWAController:
         
         return cost_sum / len(self.traj_list)
 
+    def calc_away_from_obstacle_cost(self, robot_x: float, robot_y: float) -> float:
+        if not self.traj_list.any() or not self.costmap_received:
+            return 0.0
+        
+        max_exp_cost = 0.0
+        for pt in self.traj_list:
+            mx, my = self.world_to_costmap(pt[0], pt[1], robot_x, robot_y)
+            # Normalize cost from [0, 100] to [0.0, 1.0]
+            c = self.get_costmap_cost(mx, my) / 100.0
+            
+            # Exponential penalty
+            exp_cost = math.exp(5.0 * c)
+            
+            if exp_cost > max_exp_cost:
+                max_exp_cost = exp_cost
+        
+        return max_exp_cost
+
+    def _crosstrack_error(self, x_r: float, y_r: float, x_ref: float, y_ref: float, theta_ref: float) -> float:
+        return (y_ref - y_r) * math.cos(theta_ref) - (x_ref - x_r) * math.sin(theta_ref)
+
+    def calc_crosstrack_cost(self, target_idx: int) -> float:
+        if not self.traj_list.any() or not self.current_path:
+            return 0.0
+
+        final_x, final_y, _ = self.traj_list[-1]
+
+        if target_idx >= len(self.current_path):
+            return 0.0
+
+        ref_wp = self.current_path[target_idx]
+        
+        cte = self._crosstrack_error(final_x, final_y, ref_wp.x, ref_wp.y, ref_wp.theta)
+        
+        return abs(cte)
+
     def dwa_main_control(self, state: RobotState, target_idx: int) -> DWAResult:
         dw = self.calc_dynamic_window(state.v, state.omega)
         v_min, v_max, omega_min, omega_max = dw
@@ -178,15 +214,20 @@ class DWAController:
             for omega_sample in omega_range:
                 self.traj_list = self.calc_trajectory(state.x, state.y, state.theta, v_sample, omega_sample)
                 
+                crosstrack_cost = self.calc_crosstrack_cost(target_idx)
                 heading_cost = self.calc_lookahead_heading_cost(target_idx)
                 lookahead_cost = self.calc_lookahead_cost(target_idx)
                 speed_ref_cost = self.calc_speed_ref_cost(v_sample)
                 obs_cost = self.calc_obstacle_cost(state.x, state.y)
+                away_cost = self.calc_away_from_obstacle_cost(state.x, state.y)
+
                 
-                total_cost = (self.heading_bias * heading_cost +
+                total_cost = (self.path_distance_bias * crosstrack_cost +
+                              self.heading_bias * heading_cost +
                               self.goal_distance_bias * lookahead_cost +
                               self.occdist_scale * obs_cost +
-                              self.speed_ref_bias * speed_ref_cost)
+                              self.speed_ref_bias * speed_ref_cost +
+                              self.away_bias * away_cost)
                 
                 if obs_cost > max_obstacle_cost:
                     max_obstacle_cost = obs_cost
@@ -229,38 +270,35 @@ class PreviewController:
 
     def load_params(self):
         # Path parameters
-        self.path_type = rospy.get_param('~preview_controller/path_type', 'snake')
-        print(path_type)
-        import time
-        time.sleep(9999)
-        self.path_amplitude = rospy.get_param('~preview_controller/amplitude', 4.0)
-        self.path_wavelength = rospy.get_param('~preview_controller/wavelength', 6.0)
-        self.path_length = rospy.get_param('~preview_controller/length', 10.0)
-        self.path_point_spacing = rospy.get_param('~preview_controller/point_spacing', 0.3)
-        self.straight_path_distance = rospy.get_param('~preview_controller/straight_path_distance', 5.0)
+        self.path_type = rospy.get_param('preview_controller/path_type', 'snake')
+        self.path_amplitude = rospy.get_param('preview_controller/amplitude', 4.0)
+        self.path_wavelength = rospy.get_param('preview_controller/wavelength', 6.0)
+        self.path_length = rospy.get_param('preview_controller/length', 10.0)
+        self.path_point_spacing = rospy.get_param('preview_controller/point_spacing', 0.3)
+        self.straight_path_distance = rospy.get_param('preview_controller/straight_path_distance', 5.0)
         
         # Controller parameters
-        self.linear_velocity = rospy.get_param('~preview_controller/linear_velocity', 0.3)
-        self.dt = rospy.get_param('~preview_controller/preview_dt', 0.1)
-        self.max_vel = rospy.get_param('~preview_controller/max_vel', 0.3)
-        self.max_omega = rospy.get_param('~preview_controller/max_omega', 0.6)
-        self.vel_acc = rospy.get_param('~preview_controller/vel_acc', 0.5)
-        self.omega_acc = rospy.get_param('~preview_controller/omega_acc', 0.4)
-        self.lookahead_distance = rospy.get_param('~preview_controller/lookahead_distance', 0.5)
-        self.max_lookahead_heading_error = rospy.get_param('~preview_controller/max_lookahead_heading_error', 0.2)
-        self.kp_adjust_cte = rospy.get_param('~preview_controller/kp_adjust_cte', 2.0)
-        self.goal_distance_threshold = rospy.get_param('~preview_controller/goal_distance_threshold', 0.2)
-        self.goal_reduce_factor = rospy.get_param('~preview_controller/goal_reduce_factor', 0.5)
+        self.linear_velocity = rospy.get_param('preview_controller/linear_velocity', 0.3)
+        self.dt = rospy.get_param('preview_controller/preview_dt', 0.1)
+        self.max_vel = rospy.get_param('preview_controller/max_vel', 0.3)
+        self.max_omega = rospy.get_param('preview_controller/max_omega', 0.6)
+        self.vel_acc = rospy.get_param('preview_controller/vel_acc', 0.5)
+        self.omega_acc = rospy.get_param('preview_controller/omega_acc', 0.4)
+        self.lookahead_distance = rospy.get_param('preview_controller/lookahead_distance', 0.5)
+        self.max_lookahead_heading_error = rospy.get_param('preview_controller/max_lookahead_heading_error', 0.2)
+        self.kp_adjust_cte = rospy.get_param('preview_controller/kp_adjust_cte', 2.0)
+        self.goal_distance_threshold = rospy.get_param('preview_controller/goal_distance_threshold', 0.2)
+        self.goal_reduce_factor = rospy.get_param('preview_controller/goal_reduce_factor', 0.5)
         
         # Hysteresis thresholds
-        self.dwa_activation_cost_thresh = rospy.get_param('~preview_controller/dwa_activation_cost_thresh', 10.0)
-        self.preview_reactivation_cost_thresh = rospy.get_param('~preview_controller/preview_reactivation_cost_thresh', 5.0)
+        self.dwa_activation_cost_thresh = rospy.get_param('preview_controller/dwa_activation_cost_thresh', 10.0)
+        self.preview_reactivation_cost_thresh = rospy.get_param('preview_controller/preview_reactivation_cost_thresh', 5.0)
 
         # Preview control matrices parameters
-        self.Q_params = rospy.get_param('~preview_controller/Q_params', [5.0, 6.0, 5.0])
-        self.R_param = rospy.get_param('~preview_controller/R', 1.0)
-        self.preview_steps = rospy.get_param('~preview_controller/preview_steps', 5) # Added from constructor default
-        self.preview_loop_thresh = rospy.get_param('~preview_controller/preview_loop_thresh', 1e-5)
+        self.Q_params = rospy.get_param('preview_controller/Q_params', [5.0, 6.0, 5.0])
+        self.R_param = rospy.get_param('preview_controller/R', 1.0)
+        self.preview_steps = rospy.get_param('preview_controller/preview_steps', 5) # Added from constructor default
+        self.preview_loop_thresh = rospy.get_param('preview_controller/preview_loop_thresh', 1e-5)
 
     def setup_ros_communications(self):
         self.robot_vel_pub = rospy.Publisher("/atrv/cmd_vel", Twist, queue_size=10)
