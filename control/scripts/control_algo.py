@@ -255,8 +255,8 @@ class DWAController:
                 heading_cost = self.calc_lookahead_heading_cost(target_idx)
                 lookahead_cost = self.calc_lookahead_cost(target_idx)
                 speed_ref_cost = self.calc_speed_ref_cost(v_sample)
-                obs_cost = self.calc_obstacle_cost(state.x, state.y)
-                away_cost = self.calc_away_from_obstacle_cost(state.x, state.y)
+                obs_cost = self.calc_obstacle_cost()
+                away_cost = self.calc_away_from_obstacle_cost()
 
                 
                 total_cost = (self.path_distance_bias * crosstrack_cost +
