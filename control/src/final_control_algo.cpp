@@ -869,7 +869,6 @@ double dwa_controller::calc_speed_ref_cost(double v) {
 
 double dwa_controller::calc_obstacle_cost() {
     if (traj_list_.empty() || !costmap_received_) {
-        ...
         return 0.0;
     }
     
