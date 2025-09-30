@@ -983,7 +983,7 @@ double dwa_controller::calc_away_from_obstacle_cost() {
             continue;
 
         double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0;
-        double exp_cost = std::exp(5.0 * c); // exponential penalty
+        double exp_cost = std::exp(c); // exponential penalty
 
         total_exp_cost =  total_exp_cost + exp_cost;
         item = item + 1;
