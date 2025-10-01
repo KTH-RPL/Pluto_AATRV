@@ -82,3 +82,22 @@ target_link_libraries(control_service_server
 # Ensure control_service_server builds after messages/services are generated
 add_dependencies(control_service_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
+# Install Python scripts
+catkin_install_python(PROGRAMS
+  scripts/control_algo.py
+  scripts/control_test_algo.py
+  scripts/robot_simulator.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Install launch files
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  PATTERN ".svn" EXCLUDE
+)
+
+# Install rviz config
+install(DIRECTORY rviz/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
+  PATTERN ".svn" EXCLUDE
+)

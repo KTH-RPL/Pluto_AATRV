@@ -1,5 +1,5 @@
 preview_controller:
-  preview_steps: 0
+  preview_steps: 3
   # Basic control parameters
   linear_velocity: 0.3
   preview_dt: 0.1
@@ -8,13 +8,13 @@ preview_controller:
   max_vel: 0.3
   max_omega: 0.4
   vel_acc: 1
-  omega_acc: 0.7
+  omega_acc: 1.5
   
   # Switch between DWA and preview control, do ROS_LOG of obstacle cost to find appropriate value
   obst_cost_thresh: 10.0
   # Hysteresis thresholds for switching controllers (visualiser parity)
-  dwa_activation_cost_thresh: 50.0           # PREVIEW -> DWA when max obs cost > this
-  preview_reactivation_cost_thresh: 10.0      # DWA -> PREVIEW when max obs cost <= this
+  dwa_activation_cost_thresh: 0           # PREVIEW -> DWA when max obs cost > this
+  preview_reactivation_cost_thresh: 0      # DWA -> PREVIEW when max obs cost <= this
 
 
   # Robot physical properties
@@ -39,7 +39,7 @@ preview_controller:
   # LQR controller parameters
   # Q0 refers to cost for ey, Q1 refers to cost for ey_dot, Q2 refers to cost for etheta
   # Increase coefficient if you want to reduce particular error term, test to see how ey changes with high and low values, change sign based on that
-  Q_params: [5.0, 6.0, 5.0]
+  Q_params: [0.001, 4.0, 1.0]
 
   # R refers to cost for omega
   # Decrease R if you want omega to change faster, it was 1 while testing, try with smaller and smaller values
@@ -47,13 +47,13 @@ preview_controller:
   
   # DWA controller shared parameters
   min_speed: 0.0
-  max_speed: 0.3
+  max_speed: 0.9
   dt_dwa: 0.1
-  stop_cost: 200.0
+  stop_cost: 80.0
   goal_reduce_factor: 0.5
 
 
-  path_type: "straight"                 # OPTIONS: "snake" or "straight"
+  path_type: "snake"                 # OPTIONS: "snake" or "straight"
   straight_path_distance: 10.0           # [m] Distance to travel in a straight line
 
   # Path params
@@ -73,14 +73,22 @@ dwa_controller:
   predict_time: 4.0
 
   # Smaller samples means faster computation
-  vx_samples: 8
-  omega_samples: 10
+  vx_samples: 3
+  omega_samples: 5
+
+  # Lookahead distance
+  lookahead_distance: 3.0
+
+  # Obstacle cost threshold, if cost is greater than this, then lookahead point is considered in obstacle
+  lookahead_obstacle_cost_thresh: 20.0
   
   # Cost function weights
   # Set weights to match updated visualiser defaults
+  lookahead_heading_bias: 0.5
   path_distance_bias: 2.0
   goal_distance_bias: 1.0
-  occdist_scale: 50.0
   speed_ref_bias: 10.0
-  away_bias: 2.0
-  heading_bias: 0.05
+
+  # Increase obstacle cost 
+  occdist_scale: 200.0
+  away_bias: 0.0

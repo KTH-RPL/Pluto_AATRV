@@ -99,7 +99,8 @@ class CostmapGeneratorNode:
                 transform = self.tf_buffer.lookup_transform(
                     self.map_frame, 
                     marker.header.frame_id, 
-                    timestamp, # The time the data was captured
+                    # timestamp,
+                    rospy.Time(0), # The time the data was captured 
                     rospy.Duration(0.1) # Timeout
                 )
                 
@@ -114,7 +115,8 @@ class CostmapGeneratorNode:
                 for point in marker.points:
                     p_stamped = PointStamped()
                     p_stamped.header = marker.header
-                    p_stamped.header.stamp = timestamp # Use the original timestamp for the transform
+                    # p_stamped.header.stamp = timestamp 
+                    p_stamped.header.stamp = rospy.Time(0) # Use the original timestamp for the transform
                     p_stamped.point = point
                     
                     transformed_point_stamped = tf2_geometry_msgs.do_transform_point(p_stamped, transform)

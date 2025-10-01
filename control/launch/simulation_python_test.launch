@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Simulation Parameters -->
+    <arg name="initial_x" default="0.0"/>
+    <arg name="initial_y" default="0.0"/>
+    <arg name="initial_theta" default="0.0"/>
+    <arg name="robot_radius" default="0.5"/>
+    <arg name="use_rviz" default="true"/>
+    
+    <!-- Robot Simulator -->
+    <node name="robot_simulator" pkg="robot_controller" type="robot_simulator.py" output="screen">
+        <param name="rate" value="50.0"/>
+        <param name="robot_radius" value="$(arg robot_radius)"/>
+        <param name="initial_x" value="$(arg initial_x)"/>
+        <param name="initial_y" value="$(arg initial_y)"/>
+        <param name="initial_theta" value="$(arg initial_theta)"/>
+    </node>
+    
+    <!-- Costmap Generator -->
+    <node name="costmap_generator" pkg="detector" type="costmap.py" output="screen">
+        <param name="obstacle_topic" value="/detected_obstacles"/>
+        <param name="costmap_topic" value="/local_costmap"/>
+        <param name="map_size" value="20.0"/>
+        <param name="resolution" value="0.1"/>
+        <param name="map_frame" value="base_link"/>
+        <param name="inflation_radius" value="0.6"/>
+        <param name="gradient_end_radius" value="1.2"/>
+        <param name="max_cost" value="100"/>
+        <param name="memory_duration" value="5.0"/>
+    </node>
+    
+    <!-- Load Controller Parameters -->
+    <rosparam file="$(find robot_controller)/config/preview_controller_config.yaml" command="load"/>
+    
+    <!-- Python Test Control Node (Enhanced version matching C++) -->
+    <node name="control_test_algo_node" pkg="robot_controller" type="control_test_algo.py" output="screen"/>
+    
+    <!-- RViz -->
+    <node if="$(arg use_rviz)" name="rviz" pkg="rviz" type="rviz" 
+          args="-d $(find robot_controller)/rviz/simulation.rviz" output="screen"/>
+    
+</launch> 

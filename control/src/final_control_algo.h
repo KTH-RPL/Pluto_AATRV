@@ -38,8 +38,11 @@ struct DWAResult {
     double best_v;
     double best_omega;
     double obs_cost;
-    DWAResult(double best_v_ = 0.0, double best_omega_ = 0.0, double obs_cost_ = 0.0) 
-    : best_v(best_v_), best_omega(best_omega_), obs_cost(obs_cost_) {}
+    double lookahead_x;
+    double lookahead_y;
+    double lookahead_theta;
+    DWAResult(double best_v_ = 0.0, double best_omega_ = 0.0, double obs_cost_ = 0.0, double lookahead_x_ = 0.0, double lookahead_y_ = 0.0, double lookahead_theta_ = 0.0) 
+    : best_v(best_v_), best_omega(best_omega_), obs_cost(obs_cost_), lookahead_x(lookahead_x_), lookahead_y(lookahead_y_), lookahead_theta(lookahead_theta_) {}
 };
 
 class PreviewController {
@@ -194,7 +197,7 @@ class dwa_controller {
         void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
         bool costmap_received_ = false;
         // Query normalized cost [0,100] for a world point; returns 100 if unknown/out-of-bounds
-        uint8_t query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const;
+        double query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const;
 
     private:
         ros::NodeHandle nh_;
@@ -204,6 +207,7 @@ class dwa_controller {
         double occdist_scale_;
         double speed_ref_bias_;
         double away_bias_;
+        double lookahead_heading_bias_;
         int vx_samples_;
         int omega_samples_;
         double max_omega_;
@@ -218,6 +222,12 @@ class dwa_controller {
         double collision_obstacle_coeff;
         double ref_velocity_;
         double collision_dist;
+        double lookahead_distance_;
+        double lookahead_obstacle_cost_thresh_;
+
+        double temp_lookahead_x;
+        double temp_lookahead_y;
+        double temp_lookahead_theta;
 
         double dx;
         double dy;
@@ -244,7 +254,8 @@ class dwa_controller {
         double calc_away_from_obstacle_cost();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
         double calc_lookahead_heading_cost();
-        bool worldToCostmap(double x, double y, int& mx, int& my, double robot_x, double robot_y);
+        bool chkside(double x1, double y1, double path_theta, double robot_x, double robot_y);
+        bool worldToCostmap(double wx, double wy, int& mx, int& my, double robot_x, double robot_y, double robot_yaw);
         uint8_t getCostmapCost(int mx, int my);
 
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
