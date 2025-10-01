@@ -174,11 +174,11 @@ class CarSimulation:
         self.curvatures = calculate_curvature(self.x_path, self.y_path)
         
         self.ref_velocity = 1.5  
-        self.controller = PreviewController(v=self.ref_velocity, dt=0.1, preview_steps=3)
+        self.controller = PreviewController(v=self.ref_velocity, dt=0.1, preview_steps=6)
         self.controller.v = self.ref_velocity
         self.controller.omega = 0
-        self.x = 6
-        self.y = -5
+        self.x = self.x_path[0]
+        self.y = self.y_path[0]
         self.theta = np.pi/1.5
         
         self.history_x = [self.x]
@@ -243,8 +243,8 @@ class CarSimulation:
         
 
         dwa_v, dwa_omega, obsi, mindist = self.dwa_control()
-
-        if mindist < 2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
+        bool = False
+        if bool and mindist < 2*self.obstacles[obsi]['radius'] + 2*self.robot_radius:
             self.controller.omega = dwa_omega
             self.controller.v = dwa_v  
             print(f"DWA Control: v={dwa_v:.2f}, omega={dwa_omega:.2f}, mindist={mindist:.2f} (obstacle index: {obsi})")
@@ -326,8 +326,8 @@ class CarSimulation:
         obstacles = []
         # obstacles.append({'x': 1.33, 'y': 4.1, 'vx': -0.2, 'vy':-0.6, 'radius': 1.2})
         # obstacles.append({'x': 0.9, 'y': 5.6, 'vx': -0.3, 'vy':-0.8, 'radius': 0.5})
-        obstacles.append({'x': 5, 'y': 0, 'vx': -0.3, 'vy':-0.5, 'radius': 1.2})
-        obstacles.append({'x': 1, 'y': 2.5, 'vx': -0.0, 'vy':-0.0, 'radius': 1.4})
+        # obstacles.append({'x': 5, 'y': 0, 'vx': -0.3, 'vy':-0.5, 'radius': 1.2})
+        # obstacles.append({'x': 1, 'y': 2.5, 'vx': -0.0, 'vy':-0.0, 'radius': 1.4})
         return obstacles
     
     def distancecalc(self, x1, y1, x2, y2):
