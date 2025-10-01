@@ -29,20 +29,24 @@ class CostmapGeneratorNode:
         self.resolution = rospy.get_param('~resolution', 0.1)
         self.map_frame = rospy.get_param('~map_frame', 'base_link')
         
+        # <<< BUG FIX: Introduce a fixed frame for storing obstacle memory
+        # This frame should be a non-moving world frame, like 'odom' or 'map'.
+        self.fixed_frame = rospy.get_param('~fixed_frame', 'odom')
+
         # Gradient Inflation Parameters
         self.inflation_radius = rospy.get_param('~inflation_radius', 0.4)
         self.gradient_end_radius = rospy.get_param('~gradient_end_radius', 1.2)
         self.max_cost = rospy.get_param('~max_cost', 100)
 
-        # <<< NEW: Obstacle Memory Parameter
+        # Obstacle Memory Parameter
         self.memory_duration = rospy.Duration(rospy.get_param('~memory_duration', 5.0)) # seconds
 
-        # <<< NEW: TF2 listener setup
+        # TF2 listener setup
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 
-        # <<< NEW: Data structure to store obstacles with timestamps
-        # We will store (timestamp, marker) tuples
+        # <<< BUG FIX: Data structure now stores obstacles already transformed into the fixed_frame
+        # We will store (timestamp, marker_in_fixed_frame) tuples
         self.persisted_obstacles = []
 
         # --- Pre-calculate map properties ---
@@ -61,6 +65,7 @@ class CostmapGeneratorNode:
         self.costmap_pub = rospy.Publisher(costmap_topic, OccupancyGrid, queue_size=1)
 
         rospy.loginfo("Costmap Generator Node with Memory and Gradient Inflation initialized.")
+        rospy.loginfo(f"Local map frame: '{self.map_frame}', Obstacle memory frame: '{self.fixed_frame}'")
         rospy.loginfo(f"Obstacle memory duration: {self.memory_duration.to_sec()}s")
 
     def world_to_map(self, wx, wy):
@@ -72,71 +77,96 @@ class CostmapGeneratorNode:
     def obstacles_callback(self, marker_array_msg):
         """Processes new and remembered obstacles to generate the costmap."""
         now = rospy.Time.now()
-
-        # --- Step 1: Add new obstacles to our memory buffer ---
-        for marker in marker_array_msg.markers:
-            # We store the marker as it arrived, in its original frame
-            self.persisted_obstacles.append((now, marker))
         
-        # --- Step 2: Filter out old obstacles from the memory buffer ---
+        # --- Step 1 & 2 (Revised Logic): Manage memory based on current detections ---
+        
+        # If we have received new obstacle detections in this message...
+        if marker_array_msg.markers:
+            # First, clear out the entire memory buffer. We will trust the new sensor data.
+            self.persisted_obstacles = []
+
+            # Now, process and store ONLY the new obstacles.
+            for marker in marker_array_msg.markers:
+                try:
+                    # Transform the new marker from its original frame to our fixed_frame for storage
+                    transform_to_fixed = self.tf_buffer.lookup_transform(
+                        self.fixed_frame,
+                        marker.header.frame_id,
+                        marker.header.stamp,
+                        rospy.Duration(0.1)
+                    )
+
+                    fixed_frame_marker = Marker()
+                    fixed_frame_marker.header.frame_id = self.fixed_frame
+                    fixed_frame_marker.points = []
+                    fixed_frame_marker.action = marker.action
+                    fixed_frame_marker.type = marker.type
+
+                    for point in marker.points:
+                        p_stamped = PointStamped(header=marker.header, point=point)
+                        transformed_point_stamped = tf2_geometry_msgs.do_transform_point(p_stamped, transform_to_fixed)
+                        fixed_frame_marker.points.append(transformed_point_stamped.point)
+                    
+                    # Add the correctly transformed marker to our (now fresh) persistence buffer
+                    self.persisted_obstacles.append((now, fixed_frame_marker))
+
+                except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+                    rospy.logwarn_throttle(2.0, f"Could not transform new obstacle from {marker.header.frame_id} to {self.fixed_frame}: {e}")
+                    continue
+        
+        # If we received an EMPTY marker array, we do nothing here. We will rely on the
+        # obstacles already in the buffer from a previous timestep.
+
+        # Filter out old obstacles from the memory buffer regardless of what happened above.
+        # This handles the case where an obstacle was seen, then disappears.
+        # It will persist for memory_duration and then be removed.
         if self.memory_duration.to_sec() > 0:
             self.persisted_obstacles = [
-                (ts, m) for ts, m in self.persisted_obstacles 
+                (ts, m) for ts, m in self.persisted_obstacles
                 if (now - ts) < self.memory_duration
             ]
-        else: # If memory is zero, only use the current ones
-            self.persisted_obstacles = []
-            for marker in marker_array_msg.markers:
-                self.persisted_obstacles.append((now, marker))
 
+        # --- The rest of the function (Steps 3 and 4) remains UNCHANGED ---
+        # It will now operate on a much cleaner `persisted_obstacles` list that
+        # doesn't contain a long historical smear.
 
-        # --- Step 3: Transform all persisted obstacles into the current map_frame ---
+        # --- Step 3: Transform all persisted obstacles from the fixed_frame into the current map_frame ---
         obstacles_in_current_frame = []
-        for timestamp, marker in self.persisted_obstacles:
-            try:
-                # We need to transform from the marker's frame to our target map_frame
-                # This handles cases where obstacles are detected in, e.g., 'camera_link'
-                transform = self.tf_buffer.lookup_transform(
-                    self.map_frame, 
-                    marker.header.frame_id, 
-                    timestamp,
-                    # rospy.Time(0), # The time the data was captured 
-                    rospy.Duration(0.1) # Timeout
-                )
-                
-                # Create a new marker to hold the transformed points
-                transformed_marker = Marker()
-                transformed_marker.header.frame_id = self.map_frame # The new frame is our map frame
-                transformed_marker.points = []
-                transformed_marker.action = marker.action
-                transformed_marker.type = marker.type
-                
-                # Transform each point in the polygon
-                for point in marker.points:
-                    p_stamped = PointStamped()
-                    p_stamped.header = marker.header
-                    p_stamped.header.stamp = timestamp 
-                    # p_stamped.header.stamp = rospy.Time(0) # Use the original timestamp for the transform
-                    p_stamped.point = point
-                    
-                    transformed_point_stamped = tf2_geometry_msgs.do_transform_point(p_stamped, transform)
-                    transformed_marker.points.append(transformed_point_stamped.point)
-
-                obstacles_in_current_frame.append(transformed_marker)
-            
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                rospy.logwarn_throttle(2.0, f"Could not transform obstacle from {marker.header.frame_id} to {self.map_frame}: {e}")
-                continue
-
-        # --- Step 4: Generate costmap from the combined (new + remembered) obstacles ---
         try:
+            transform_to_local = self.tf_buffer.lookup_transform(
+                self.map_frame,
+                self.fixed_frame,
+                rospy.Time(0), # Use latest available transform
+                rospy.Duration(0.1)
+            )
+
+            now_for_stamp = rospy.Time.now()
+            for timestamp, fixed_marker in self.persisted_obstacles:
+                local_marker = Marker()
+                local_marker.header.frame_id = self.map_frame
+                local_marker.points = []
+
+                for point_in_fixed_frame in fixed_marker.points:
+                    p_stamped = PointStamped()
+                    p_stamped.header.frame_id = self.fixed_frame
+                    p_stamped.header.stamp = now_for_stamp
+                    p_stamped.point = point_in_fixed_frame
+
+                    transformed_point_stamped = tf2_geometry_msgs.do_transform_point(p_stamped, transform_to_local)
+                    local_marker.points.append(transformed_point_stamped.point)
+
+                obstacles_in_current_frame.append(local_marker)
+
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn_throttle(2.0, f"Could not transform persisted obstacles from {self.fixed_frame} to {self.map_frame}: {e}")
+            return
+
+        # --- Step 4: Generate costmap from the combined obstacles (all now in map_frame) ---
+        try:
+            # ... (rest of the function is identical) ...
             obstacle_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
 
-            # Rasterize each transformed obstacle polygon
             for marker in obstacles_in_current_frame:
-                if marker.action != marker.ADD or marker.type != marker.LINE_STRIP or len(marker.points) < 3:
-                    continue
-
                 polygon_points_map = []
                 for world_point in marker.points:
                     mx, my = self.world_to_map(world_point.x, world_point.y)
@@ -147,8 +177,6 @@ class CostmapGeneratorNode:
                     continue
                 
                 cv2.fillPoly(obstacle_grid, [np.array(polygon_points_map, dtype=np.int32)], 255)
-
-            # --- The rest of the logic is unchanged ---
 
             dist_transform_input = cv2.bitwise_not(obstacle_grid)
             dist_pixels = cv2.distanceTransform(dist_transform_input, cv2.DIST_L2, 5)
@@ -171,7 +199,7 @@ class CostmapGeneratorNode:
 
         except Exception as e:
             rospy.logerr(f"Error in costmap generation: {e}")
-
+            
     def publish_costmap(self, grid_data):
         """Converts the NumPy grid to an OccupancyGrid message and publishes it."""
         msg = OccupancyGrid()

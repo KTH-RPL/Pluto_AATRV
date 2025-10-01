@@ -1,4 +1,4 @@
-#!/home/nuc/catkin_noetic/src/Pluto_AATRV/detector/detector/bin/python3
+#!/home/sankeerth/pluto/bin/python3
 
 # ROS1 Imports
 import rospy
