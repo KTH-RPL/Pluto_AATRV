@@ -7,6 +7,7 @@ import numpy as np
 from geometry_msgs.msg import PoseStamped, Twist, TransformStamped, Point
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
+import tf2_geometry_msgs
 
 class RobotSimulator:
     def __init__(self):
@@ -39,8 +40,10 @@ class RobotSimulator:
         # Subscribers
         self.cmd_vel_sub = rospy.Subscriber('/atrv/cmd_vel', Twist, self.cmd_vel_callback)
         
-        # TF broadcaster
+        # TF broadcaster and buffer for transformations
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         # Create static obstacles
         self.create_obstacles()
@@ -54,9 +57,10 @@ class RobotSimulator:
         
         # Small obstacle directly on path to test avoidance
         obs_small = {
-            'center': (3.5, 0.5),
-            'size': 1.0,
-            'type': 'square'
+            'center': [3.5, 0.5],  # Changed to list so it's mutable
+            'size': 0.5,
+            'type': 'square',
+            'velocity': (-0.2, 0.0)  # Moving at 0.5 m/s in x, 0.3 m/s in y
         }
         
         # # Obstacle 1: Square obstacle at (3, 2)
@@ -81,7 +85,7 @@ class RobotSimulator:
         # }
         
         self.obstacles = [obs_small]
-        rospy.loginfo("Created %d static obstacles", len(self.obstacles))
+        rospy.loginfo("Created %d dynamic obstacles", len(self.obstacles))
     
     def cmd_vel_callback(self, msg):
         """Update robot velocity from control commands"""
@@ -108,6 +112,13 @@ class RobotSimulator:
             self.theta -= 2 * math.pi
         while self.theta < -math.pi:
             self.theta += 2 * math.pi
+    
+    def update_obstacles(self, dt):
+        """Update obstacle positions based on their velocities"""
+        for obs in self.obstacles:
+            vx, vy = obs['velocity']
+            obs['center'][0] += vx * dt
+            obs['center'][1] += vy * dt
     
     def publish_robot_pose(self):
         """Publish robot pose as PoseStamped"""
@@ -215,25 +226,44 @@ class RobotSimulator:
         self.robot_marker_pub.publish(arrow)
     
     def publish_obstacles(self):
-        """Publish obstacle markers for costmap generation"""
+        """Publish obstacle markers for costmap generation
+        
+        Obstacles are stored as dynamic positions in the odom frame (updated with velocities),
+        but published in base_link frame (after transformation).
+        This mimics real obstacle detection which happens in the robot's frame.
+        """
         marker_array = MarkerArray()
+        current_time = rospy.Time.now()
+        
+        # Try to get the transform from odom to base_link
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                'base_link',  # target frame
+                'odom',       # source frame
+                rospy.Time(0),  # latest available
+                rospy.Duration(2.0)  # timeout
+            )
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, 
+                tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn_throttle(2.0, f"Could not transform obstacles from odom to base_link: {e}")
+            return
         
         for i, obs in enumerate(self.obstacles):
             marker = Marker()
-            marker.header.frame_id = "odom"
-            marker.header.stamp = rospy.Time.now()
+            marker.header.frame_id = "base_link"  # Publish in base_link frame
+            marker.header.stamp = current_time
             marker.ns = "obstacles"
             marker.id = i
             marker.type = Marker.LINE_STRIP
             marker.action = Marker.ADD
             
-            # Create square polygon
+            # Create square polygon in odom frame
             cx, cy = obs['center']
             size = obs['size']
             half_size = size / 2.0
             
-            # Square corners
-            corners = [
+            # Square corners in odom frame
+            corners_odom = [
                 (cx - half_size, cy - half_size),
                 (cx + half_size, cy - half_size),
                 (cx + half_size, cy + half_size),
@@ -241,12 +271,21 @@ class RobotSimulator:
                 (cx - half_size, cy - half_size)  # Close the loop
             ]
             
-            for corner_x, corner_y in corners:
-                p = Point()
-                p.x = corner_x
-                p.y = corner_y
-                p.z = 0.0
-                marker.points.append(p)
+            # Transform each corner from odom to base_link
+            for corner_x, corner_y in corners_odom:
+                # Create a PointStamped in odom frame
+                point_odom = tf2_geometry_msgs.PointStamped()
+                point_odom.header.frame_id = "odom"
+                point_odom.header.stamp = current_time
+                point_odom.point.x = corner_x
+                point_odom.point.y = corner_y
+                point_odom.point.z = 0.0
+                
+                # Transform to base_link
+                point_base_link = tf2_geometry_msgs.do_transform_point(point_odom, transform)
+                
+                # Add to marker
+                marker.points.append(point_base_link.point)
             
             marker.scale.x = 0.05  # line width
             
@@ -267,6 +306,9 @@ class RobotSimulator:
         rate = rospy.Rate(self.rate_hz)
         dt = 1.0 / self.rate_hz
         
+        # Wait a bit for TF buffer to populate
+        rospy.sleep(0.5)
+        
         # Publish obstacles once at startup and then periodically
         obstacle_pub_counter = 0
         
@@ -276,16 +318,16 @@ class RobotSimulator:
             # Update robot state
             self.update_robot_state(dt)
             
+            # Update dynamic obstacles
+            self.update_obstacles(dt)
+            
             # Publish everything
             self.publish_robot_pose()
             self.publish_tf()
             self.publish_robot_marker()
             
-            # Publish obstacles every 10 iterations (~5Hz if main loop is 50Hz)
-            obstacle_pub_counter += 1
-            if obstacle_pub_counter >= 10:
-                self.publish_obstacles()
-                obstacle_pub_counter = 0
+            # Publish obstacles every iteration (50Hz)
+            self.publish_obstacles()
             
             rate.sleep()
 

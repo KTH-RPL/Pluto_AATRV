@@ -101,3 +101,9 @@ install(DIRECTORY rviz/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
   PATTERN ".svn" EXCLUDE
 )
+
+catkin_install_python(
+  PROGRAMS
+    scripts/odom_to_base_linktf.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
