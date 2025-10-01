@@ -131,6 +131,12 @@ void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::Co
     robot_y = current_pose.pose.position.y;
     robot_theta = current_pose.pose.orientation.z;
     
+    // Safety check for NaN values in pose
+    if (std::isnan(robot_x) || std::isnan(robot_y) || std::isnan(robot_theta)) {
+        ROS_ERROR("NaN detected in robot pose! x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
+        return; // Skip this message
+    }
+    
     // --- MODIFIED --- Generate path on first pose received based on path_type_ parameter
     if (!initial_pose_received_) {
         initial_pose_received_ = true;
@@ -390,16 +396,40 @@ double PreviewController::cross_track_error(double x_r, double y_r, double x_ref
 }
 
 void PreviewController::lookahead_heading_error(double x_ref, double y_ref, double theta_ref) {
-    lookahead_heading_error_ = robot_theta - std::atan2(y_ref - robot_y, x_ref - robot_x);
-    if (lookahead_heading_error_ > M_PI) {
+    double dx = x_ref - robot_x;
+    double dy = y_ref - robot_y;
+    double dist = std::hypot(dx, dy);
+    
+    // If robot is very close to the reference point, use the path's orientation
+    if (dist < 0.01) {
+        lookahead_heading_error_ = robot_theta - theta_ref;
+    } else {
+        lookahead_heading_error_ = robot_theta - std::atan2(dy, dx);
+    }
+    
+    // Normalize to [-pi, pi]
+    while (lookahead_heading_error_ > M_PI) {
         lookahead_heading_error_ -= 2 * M_PI;
-    } else if (lookahead_heading_error_ < -M_PI) {
+    }
+    while (lookahead_heading_error_ < -M_PI) {
         lookahead_heading_error_ += 2 * M_PI;
+    }
+    
+    // Safety check for NaN
+    if (std::isnan(lookahead_heading_error_) || std::isinf(lookahead_heading_error_)) {
+        ROS_WARN("NaN/Inf detected in lookahead_heading_error, setting to 0");
+        lookahead_heading_error_ = 0.0;
     }
 }
 
 // Need to check if called only once every iteration, else can shift more than the acc_bound
 void PreviewController::boundvel(double ref_vel) {
+    // Safety check for NaN
+    if (std::isnan(ref_vel) || std::isinf(ref_vel)) {
+        ROS_WARN("NaN/Inf detected in ref_vel, keeping current v_");
+        return;
+    }
+    
     if (std::abs(ref_vel - v_) < vel_acc_bound) {
         v_ = ref_vel;
         return;
@@ -413,6 +443,12 @@ void PreviewController::boundvel(double ref_vel) {
 }
 
 void PreviewController::boundomega(double ref_omega) {
+    // Safety check for NaN
+    if (std::isnan(ref_omega) || std::isinf(ref_omega)) {
+        ROS_WARN("NaN/Inf detected in ref_omega, keeping current omega_");
+        return;
+    }
+    
     if (std::abs(ref_omega - omega_) < omega_acc_bound) {
         omega_ = ref_omega;
     } else {
@@ -668,6 +704,16 @@ bool PreviewController::chkside(double path_theta) {
 
 // Compute omega from Preview Controller
 void PreviewController::compute_control(double cross_track_error, double heading_error, double path_curvature) {
+    // Safety checks for input parameters
+    if (std::isnan(cross_track_error) || std::isinf(cross_track_error)) {
+        ROS_WARN("NaN/Inf in cross_track_error, setting to 0");
+        cross_track_error = 0.0;
+    }
+    if (std::isnan(heading_error) || std::isinf(heading_error)) {
+        ROS_WARN("NaN/Inf in heading_error, setting to 0");
+        heading_error = 0.0;
+    }
+    
     x_state << cross_track_error, v_ * std::sin(heading_error), heading_error;
 
     std::vector<double> preview_curv(preview_steps_ + 1);
@@ -695,6 +741,13 @@ void PreviewController::compute_control(double cross_track_error, double heading
     double u_fb = -(Kb_ * x_state)(0);
     double u_ff = -(Kf_ * curv_vec)(0);
     omega_ = u_fb + u_ff;
+    
+    // Final safety check on computed omega
+    if (std::isnan(omega_) || std::isinf(omega_)) {
+        ROS_ERROR("Computed omega is NaN/Inf! u_fb=%.2f, u_ff=%.2f. Setting omega to 0", u_fb, u_ff);
+        omega_ = 0.0;
+    }
+    
     ROS_INFO(" Theta error: %f, Omega: %f, ey: %f", heading_error, omega_, cross_track_error);
 }
 
@@ -709,13 +762,28 @@ void PreviewController::stop_robot() {
 // Publish the cmd_vel
 void PreviewController::publish_cmd_vel() {
     geometry_msgs::Twist cmd_vel;
+    
+    // Safety check for NaN/Inf in velocity
+    if (std::isnan(v_) || std::isinf(v_)) {
+        ROS_ERROR("NaN/Inf detected in v_! Setting to 0. This should not happen!");
+        v_ = 0.0;
+    }
+    
+    // Safety check for NaN/Inf in omega
+    if (std::isnan(omega_) || std::isinf(omega_)) {
+        ROS_ERROR("NaN/Inf detected in omega_! Setting to 0. This should not happen!");
+        omega_ = 0.0;
+    }
+    
     cmd_vel.linear.x = v_;
+    
     // Bound the omega
     if (omega_ < -max_omega_) {
         omega_ = -max_omega_;
     } else if (omega_ > max_omega_) {
         omega_ = max_omega_;
     }
+    
     cmd_vel.angular.z = omega_;
     robot_vel_pub_.publish(cmd_vel);
 }
