@@ -386,7 +386,7 @@ void PreviewController::calculate_all_curvatures() {
 
 double PreviewController::cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref) {
     double cte = (y_ref - y_r) * std::cos(theta_ref) - (x_ref - x_r) * std::sin(theta_ref);
-    return cte;
+    return -cte;
 }
 
 void PreviewController::lookahead_heading_error(double x_ref, double y_ref, double theta_ref) {
@@ -538,7 +538,7 @@ bool PreviewController::run_control(bool is_last_goal) {
         if (!bounded_vel)
             // Increase vel to the target vel
             boundvel(linear_velocity_);
-        // heading_error_ = robot_theta - current_path[targetid].theta; #Check difference with below line
+        // heading_error_ = robot_theta - current_path[targetid].theta; 
         heading_error_ =  lookahead_heading_error_;
         if (heading_error_ > M_PI) {
             heading_error_ -= 2 * M_PI;

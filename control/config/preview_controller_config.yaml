@@ -39,11 +39,11 @@ preview_controller:
   # LQR controller parameters
   # Q0 refers to cost for ey, Q1 refers to cost for ey_dot, Q2 refers to cost for etheta
   # Increase coefficient if you want to reduce particular error term, test to see how ey changes with high and low values, change sign based on that
-  Q_params: [0.001, 4.0, 1.0]
+  Q_params: [0.1,0.5,0.1]
 
   # R refers to cost for omega
   # Decrease R if you want omega to change faster, it was 1 while testing, try with smaller and smaller values
-  R: 0.01
+  R: 0.001
   
   # DWA controller shared parameters
   min_speed: 0.0
@@ -60,7 +60,7 @@ preview_controller:
   amplitude: 4
   length: 10
   wavelength: 6
-  point_spacing: 0.3
+  point_spacing: 0.1
   use_start_top: true
 
   # Hystherisis
