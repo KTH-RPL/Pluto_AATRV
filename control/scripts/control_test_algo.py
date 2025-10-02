@@ -350,6 +350,8 @@ class DWAController:
         v_range = np.linspace(v_min, v_max, self.vx_samples) if self.vx_samples > 1 else [v_min]
         omega_range = np.linspace(omega_min, omega_max, self.omega_samples) if self.omega_samples > 1 else [omega_min]
 
+        iprint = 0
+
         for v_sample in v_range:
             for omega_sample in omega_range:
                 self.traj_list = self.calc_trajectory(state.x, state.y, state.theta, v_sample, omega_sample)
@@ -407,6 +409,16 @@ class DWAController:
                     best_lookahead_x = self.temp_lookahead_x
                     best_lookahead_y = self.temp_lookahead_y
                     best_lookahead_theta = self.temp_lookahead_theta
+
+                    iprint += 1
+                    if iprint == 1:
+                        print(f"T {total_cost:.2f} || "
+                            f"CTE {self.path_distance_bias * path_cost:.2f}  | "
+                            f"H {self.lookahead_heading_bias * lookahead_heading_cost:.2f}  | "
+                            f"OC {self.occdist_scale * obs_cost:.2f}  | "
+                            f"SR {self.speed_ref_bias * speed_ref_cost:.2f}  | "
+                            f"AB {self.away_bias * away_cost:.2f}")
+                        iprint = 0
         
         self.traj_pub.publish(traj_markers)
         
