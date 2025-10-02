@@ -145,6 +145,19 @@ class DWAController:
         
         return float(self.occ_grid.data[idx])
 
+    def point_in_costmap_frame_to_map_indices(self, x: float, y: float) -> Tuple[int, int]:
+        if not self.costmap_received:
+            return -1, -1
+
+        origin_x = self.occ_grid.info.origin.position.x
+        origin_y = self.occ_grid.info.origin.position.y
+        resolution = self.occ_grid.info.resolution
+        
+        mx = int((x - origin_x) / resolution)
+        my = int((y - origin_y) / resolution)
+
+        return mx, my
+
     def world_to_costmap(self, wx: float, wy: float, robot_x: float, robot_y: float, robot_yaw: float) -> Tuple[int, int, bool]:
         """Convert world coordinates to costmap indices"""
         if not self.costmap_received:
@@ -161,8 +174,18 @@ class DWAController:
         origin_y = self.occ_grid.info.origin.position.y
         resolution = self.occ_grid.info.resolution
         
-        mx = int((rel_x - origin_x) / resolution)
-        my = int((rel_y - origin_y) / resolution)
+        mx1 = int((rel_x - origin_x) / resolution)
+        my2 = int((rel_y - origin_y) / resolution)
+
+        p_world = PointStamped()
+        p_world.header.frame_id = self.world_frame
+        p_world.point.x = wx
+        p_world.point.y = wy
+        p_costmap_frame = tf2_geometry_msgs.do_transform_point(p_world, transform)
+        
+        mx, my = self.point_in_costmap_frame_to_map_indices(p_costmap_frame.point.x, p_costmap_frame.point.y)
+
+        print(f"MX MY 1: {mx1,my1} || MX MY 2: {mx,my} ")
         
         valid = (0 <= mx < self.occ_grid.info.width and 0 <= my < self.occ_grid.info.height)
         return mx, my, valid
