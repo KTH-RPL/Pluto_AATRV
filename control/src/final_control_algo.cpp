@@ -552,17 +552,33 @@ bool PreviewController::run_control(bool is_last_goal) {
     // Hysteresis switching between PREVIEW and DWA
 
     bool use_preview = false;
+    // if (active_controller_ == std::string("PREVIEW")) {
+    //     if (dwa_result.obs_cost > dwa_activation_cost_thresh_) {
+    //         use_preview = false; // switch to DWA
+    //         ROS_WARN("SWITCH: PREVIEW -> DWA (cost %.2f > %.2f)", dwa_result.obs_cost, dwa_activation_cost_thresh_);
+    //     } else {
+    //         use_preview = true; // stay on preview
+    //     }
+    // } else { // active_controller_ == "DWA"
+    //     if (dwa_result.obs_cost <= preview_reactivation_cost_thresh_) {
+    //         use_preview = true; // switch back to preview
+    //         ROS_WARN("SWITCH: DWA -> PREVIEW (cost %.2f <= %.2f)", dwa_result.obs_cost, preview_reactivation_cost_thresh_);
+    //     } else {
+    //         use_preview = false; // stay on DWA
+    //     }
+    // }
+    // Note: Uncomment below to switch based on obstacle density instead of cost
     if (active_controller_ == std::string("PREVIEW")) {
-        if (dwa_result.obs_cost > dwa_activation_cost_thresh_) {
+        if (obstacle_density > density_dwa_activation_thresh_) {
             use_preview = false; // switch to DWA
-            ROS_WARN("SWITCH: PREVIEW -> DWA (cost %.2f > %.2f)", dwa_result.obs_cost, dwa_activation_cost_thresh_);
+            ROS_WARN("SWITCH: PREVIEW -> DWA (density %.2f%% > %.2f%%)", obstacle_density, density_dwa_activation_thresh_);
         } else {
             use_preview = true; // stay on preview
         }
     } else { // active_controller_ == "DWA"
-        if (dwa_result.obs_cost <= preview_reactivation_cost_thresh_) {
+        if (obstacle_density <= density_preview_reactivation_thresh_) {
             use_preview = true; // switch back to preview
-            ROS_WARN("SWITCH: DWA -> PREVIEW (cost %.2f <= %.2f)", dwa_result.obs_cost, preview_reactivation_cost_thresh_);
+            ROS_WARN("SWITCH: DWA -> PREVIEW (density %.2f%% <= %.2f%%)", obstacle_density, density_preview_reactivation_thresh_);
         } else {
             use_preview = false; // stay on DWA
         }
