@@ -105,5 +105,6 @@ install(DIRECTORY rviz/
 catkin_install_python(
   PROGRAMS
     scripts/odom_to_base_linktf.py
+    scripts/robot_pose_to_base_linktf.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

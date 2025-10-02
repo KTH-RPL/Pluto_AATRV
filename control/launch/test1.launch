@@ -10,7 +10,13 @@
 
   <!-- Launch Detector -->
   <include file="$(find detector)/src/launch/detector.launch" />
-<!-- Launch Robot Controller (liveplot.py) -->
+
+  <!-- Launch Publishers Node -->
+  <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" />
+
+  <!-- Launch Robot Controller (liveplot.py) -->
   <node pkg="robot_controller" type="live_plot.py" name="robot_controller_node" output="screen" />
 
+  <!-- Launch robot_pose to base_link converter -->
+    <node pkg="robot_controller" type="robot_pose_to_base_linktf.py" name="base_footprint_node" output="screen" />
 </launch>

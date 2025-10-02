@@ -1,6 +1,6 @@
 <launch>
     <rosparam file="$(find robot_controller)/config/preview_controller_config.yaml" command="load" />  
-    <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" />
+    <!-- <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" /> -->
     <node pkg="robot_controller" type="control_node" name="controller_node" output="screen" />
 
     <arg name="bag_prefix" default="/tmp/robot_controller_data" />
