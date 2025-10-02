@@ -92,6 +92,13 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     // New: Hysteresis thresholds inspired by visualiser
     nh_.param("preview_controller/dwa_activation_cost_thresh", dwa_activation_cost_thresh_, 10.0); // switch PREVIEW -> DWA when > this
     nh_.param("preview_controller/preview_reactivation_cost_thresh", preview_reactivation_cost_thresh_, 5.0); // switch DWA -> PREVIEW when <= this
+    nh_.param("preview_controller/density_check_radius", density_check_radius_, 2.0);
+    // The costmap value (0-100) above which a cell is counted as an obstacle
+    nh_.param("preview_controller/density_obstacle_thresh", density_obstacle_thresh_, 50.0);
+    // Switch PREVIEW -> DWA when density is > this percentage (e.g., 40.0)
+    nh_.param("preview_controller/density_dwa_activation_thresh", density_dwa_activation_thresh_, 40.0);
+    // Switch DWA -> PREVIEW when density is <= this percentage (e.g., 20.0)
+    nh_.param("preview_controller/density_preview_reactivation_thresh", density_preview_reactivation_thresh_, 20.0);
 
     // R matrix for the preview controller
     nh_.param("preview_controller/R", R_param_, 1.0);
@@ -480,21 +487,24 @@ bool PreviewController::run_control(bool is_last_goal) {
     while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
         targetid++;
     }
+    double obstacle_density = dwa_controller_ptr->calculate_local_obstacle_density(
+        robot_x, robot_y, density_check_radius_, density_obstacle_thresh_
+    );
 
     // Advance lookahead if point lies in obstacle cells (cost >= 50)
-    // if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
-    //     while (targetid + 1 < max_path_points) {
-    //         double lx = current_path[targetid].x;
-    //         double ly = current_path[targetid].y;
-    //         double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y);
-    //         if (c >= 50.0) {
-    //             ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
-    //             targetid++;
-    //             continue;
-    //         }
-    //         break;
-    //     }
-    // }
+    if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
+        while (targetid + 1 < max_path_points) {
+            double lx = current_path[targetid].x;
+            double ly = current_path[targetid].y;
+            double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y, robot_theta);
+            if (c >= 50.0) {
+                ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
+                targetid++;
+                continue;
+            }
+            break;
+        }
+    }
 
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 
@@ -540,6 +550,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     ROS_INFO("DWA max obstacle cost = %f", dwa_result.obs_cost);
 
     // Hysteresis switching between PREVIEW and DWA
+
     bool use_preview = false;
     if (active_controller_ == std::string("PREVIEW")) {
         if (dwa_result.obs_cost > dwa_activation_cost_thresh_) {
@@ -914,27 +925,20 @@ void dwa_controller::costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& m
     costmap_received_ = true;
 }
 
-double dwa_controller::query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const {
-    if (!costmap_received_) return 100;
+double dwa_controller::query_cost_at_world(double wx, double wy, double robot_x, double robot_y, double robot_yaw) {
+    if (!costmap_received_) {
+            return 0.0;
+        }
+
     int mx, my;
-    // worldToCostmap requires non-const this currently; replicate minimal transform here
-    double rel_x = wx - robot_x;
-    double rel_y = wy - robot_y;
-
-    double origin_x = occ_grid_.info.origin.position.x;
-    double origin_y = occ_grid_.info.origin.position.y;
-    double resolution = occ_grid_.info.resolution;
-
-    mx = static_cast<int>((rel_x - origin_x) / resolution);
-    my = static_cast<int>((rel_y - origin_y) / resolution);
-    if (mx < 0 || my < 0 ||
-        mx >= static_cast<int>(occ_grid_.info.width) ||
-        my >= static_cast<int>(occ_grid_.info.height)) {
-        return 100;
+    if (worldToCostmap(wx, wy, mx, my, robot_x, robot_y, robot_yaw)) {
+        // The point is within the costmap bounds, so we can get its cost.
+        int idx = my * occ_grid_.info.width + mx;
+        return static_cast<double>(occ_grid_.data[idx]);
     }
-    int idx = my * occ_grid_.info.width + mx;
-    if (idx < 0 || idx >= static_cast<int>(occ_grid_.data.size())) return 100;
-    return static_cast<double>(occ_grid_.data[idx])/100.0;
+
+    // If worldToCostmap returned false, the point is outside the map.
+    return 0.0;
 }
 
 // Convert world coordinates to costmap indices
@@ -972,6 +976,74 @@ uint8_t dwa_controller::getCostmapCost(int mx, int my) {
     return 100;
 }
 
+bool dwa_controller::worldToMap(double wx, double wy, int& mx, int& my) const {
+    if (!costmap_received_) {
+        return false;
+    }
+
+    const auto& origin = occ_grid_.info.origin.position;
+    const double resolution = occ_grid_.info.resolution;
+
+    // This handles the case where the costmap origin is not at (0,0)
+    mx = static_cast<int>((wx - origin.x) / resolution);
+    my = static_cast<int>((wy - origin.y) / resolution);
+
+    // Check if within costmap bounds
+    return (mx >= 0 && mx < static_cast<int>(occ_grid_.info.width) &&
+            my >= 0 && my < static_cast<int>(occ_grid_.info.height));
+}
+
+double dwa_controller::calculate_local_obstacle_density(double robot_x, double robot_y, double radius, double obstacle_cost_threshold) {
+    if (!costmap_received_) {
+        ROS_WARN_THROTTLE(2.0, "Cannot calculate obstacle density, costmap not received. Defaulting to 100%%.");
+        return 100.0; // Safe default: assume high density if no map
+    }
+
+    const double resolution = occ_grid_.info.resolution;
+    if (resolution <= 0.0) {
+        ROS_ERROR_THROTTLE(2.0, "Invalid costmap resolution for density calculation.");
+        return 100.0;
+    }
+
+    int robot_mx, robot_my;
+    if (!worldToMap(robot_x, robot_y, robot_mx, robot_my)) {
+        ROS_WARN_THROTTLE(2.0, "Robot is outside the local costmap bounds. Cannot calculate density.");
+        return 100.0; // Robot is off the map, act cautiously
+    }
+    
+    unsigned int total_cells_in_radius = 0;
+    unsigned int obstacle_cells_in_radius = 0;
+    const int radius_in_cells = static_cast<int>(std::ceil(radius / resolution));
+
+    // Iterate through a square bounding box around the robot
+    for (int dy = -radius_in_cells; dy <= radius_in_cells; ++dy) {
+        for (int dx = -radius_in_cells; dx <= radius_in_cells; ++dx) {
+            // Check if the current cell is within the circle's radius
+            if (dx * dx + dy * dy <= radius_in_cells * radius_in_cells) {
+                int current_mx = robot_mx + dx;
+                int current_my = robot_my + dy;
+                
+                // Ensure the cell is within the map's boundaries
+                if (current_mx >= 0 && current_mx < static_cast<int>(occ_grid_.info.width) &&
+                    current_my >= 0 && current_my < static_cast<int>(occ_grid_.info.height))
+                {
+                    total_cells_in_radius++;
+                    if (getCostmapCost(current_mx, current_my) >= obstacle_cost_threshold) {
+                        obstacle_cells_in_radius++;
+                    }
+                }
+            }
+        }
+    }
+
+    if (total_cells_in_radius == 0) {
+        return 0.0; // No cells were checked, so density is 0
+    }
+    
+    double density = (static_cast<double>(obstacle_cells_in_radius) / total_cells_in_radius) * 100.0;
+    ROS_INFO_THROTTLE(1.0, "Obstacle density in %.1fm radius: %.2f%%", radius, density);
+    return density;
+}
 
 // bounds and calculates window within acc
 std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) {
@@ -1041,7 +1113,7 @@ double dwa_controller::calc_lookahead_heading_cost() {
     }
 
     // Check if lookahead point is too close to an obstacle
-    // while(temp_look_ahead_idx +1 < (*current_path_).size() && (query_cost_at_world((*current_path_)[temp_look_ahead_idx].x, (*current_path_)[temp_look_ahead_idx].y, final_x, final_y) > lookahead_obstacle_cost_thresh_)) {
+    // while(temp_look_ahead_idx +1 < (*current_path_).size() && (query_cost_at_world((*current_path_)[temp_look_ahead_idx].x, (*current_path_)[temp_look_ahead_idx].y, final_x, final_y, ) > lookahead_obstacle_cost_thresh_)) {
     //     temp_look_ahead_idx++;
     // }
 

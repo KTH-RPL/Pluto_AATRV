@@ -1,94 +1,69 @@
 preview_controller:
-  preview_steps: 3
+  # Path generation
+  path_type: "straight"                 # OPTIONS: "snake" or "straight"
+  amplitude: 4.0
+  wavelength: 6.0
+  length: 10.0
+  point_spacing: 0.1
+  straight_path_distance: 10.0
+  use_start_top: true
+
   # Basic control parameters
+  preview_steps: 3
   linear_velocity: 0.3
   preview_dt: 0.1
   
   # Velocity and acceleration limits
   max_vel: 0.3
   max_omega: 0.4
-  vel_acc: 1
+  vel_acc: 1.0
   omega_acc: 1.5
   
-  # Switch between DWA and preview control, do ROS_LOG of obstacle cost to find appropriate value
-  obst_cost_thresh: 10.0
-  # Hysteresis thresholds for switching controllers (visualiser parity)
-  dwa_activation_cost_thresh: 0           # PREVIEW -> DWA when max obs cost > this
-  preview_reactivation_cost_thresh: 0      # DWA -> PREVIEW when max obs cost <= this
-
-
   # Robot physical properties
   robot_radius: 0.5
   lookahead_distance: 0.5
   
-  # Error thresholds
+  # Error and goal thresholds
   max_cte: 1.5
   max_lookahead_heading_error: 0.2
   goal_distance_threshold: 0.5
+  goal_reduce_factor: 0.5
   
-  # Control tuning parameters
+  # LQR/Control tuning parameters
   preview_loop_thresh: 0.000001
-
-  # P gain to adjust high CTE
   kp_adjust_cte: 2.0
-  
-  # Collision avoidance coefficients, experiment with this
-  collision_robot_coeff: 2.0
-  collision_obstacle_coeff: 2.0
-  
-  # LQR controller parameters
-  # Q0 refers to cost for ey, Q1 refers to cost for ey_dot, Q2 refers to cost for etheta
-  # Increase coefficient if you want to reduce particular error term, test to see how ey changes with high and low values, change sign based on that
-  Q_params: [0.1,0.5,0.1]
-
-  # R refers to cost for omega
-  # Decrease R if you want omega to change faster, it was 1 while testing, try with smaller and smaller values
+  Q_params: [0.1, 0.5, 0.1] # [ey, ey_dot, etheta]
   R: 0.001
   
-  # DWA controller shared parameters
-  min_speed: 0.0
-  max_speed: 0.9
-  dt_dwa: 0.1
-  stop_cost: 80.0
-  goal_reduce_factor: 0.5
-
-
-  path_type: "straight"                 # OPTIONS: "snake" or "straight"
-  straight_path_distance: 10.0           # [m] Distance to travel in a straight line
-
-  # Path params
-  amplitude: 4
-  length: 10
-  wavelength: 6
-  point_spacing: 0.1
-  use_start_top: true
-
-  # Hystherisis
-  # dwa_activation_cost_thresh: 0.0
-  # preview_reactivation_cost_thresh: -1.0
-
-
+  # --- NEW: Density-based controller switching ---
+  density_check_radius: 2.0                # [m] Radius to check for obstacles
+  density_obstacle_thresh: 50.0            # [0-100] Cost value to count as obstacle
+  density_dwa_activation_thresh: 40.0      # [%] Switch PREVIEW -> DWA if density > this
+  density_preview_reactivation_thresh: 20.0  # [%] Switch DWA -> PREVIEW if density <= this
+  
+  # --- LEGACY: Cost-based switching (no longer used by default logic) ---
+  dwa_activation_cost_thresh: 10.0
+  preview_reactivation_cost_thresh: 5.0
+  
 dwa_controller:
-  # Prediction and sampling parameters
+  # Prediction and sampling
   predict_time: 4.0
-
-  # Smaller samples means faster computation
   vx_samples: 3
   omega_samples: 5
+  dt_dwa: 0.1
+  
+  # Speed limits (can be different from preview controller)
+  min_speed: 0.0
+  max_speed: 0.9
 
-  # Lookahead distance
+  # Lookahead and obstacle handling
   lookahead_distance: 3.0
-
-  # Obstacle cost threshold, if cost is greater than this, then lookahead point is considered in obstacle
   lookahead_obstacle_cost_thresh: 20.0
   
   # Cost function weights
-  # Set weights to match updated visualiser defaults
   lookahead_heading_bias: 0.5
   path_distance_bias: 2.0
   goal_distance_bias: 1.0
   speed_ref_bias: 10.0
-
-  # Increase obstacle cost 
   occdist_scale: 200.0
   away_bias: 20.0

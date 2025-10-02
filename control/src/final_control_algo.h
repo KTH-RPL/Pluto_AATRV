@@ -15,6 +15,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <string>
 
+// (Waypoint and Obstacle structs are unchanged)
 struct Waypoint {
     double x;
     double y;
@@ -32,8 +33,10 @@ struct Obstacle {
         : x(x_), y(y_), width(width_), height(height_) {}
 };
 
+
 class dwa_controller;
 
+// (DWAResult struct is unchanged)
 struct DWAResult {
     double best_v;
     double best_omega;
@@ -45,15 +48,15 @@ struct DWAResult {
     : best_v(best_v_), best_omega(best_omega_), obs_cost(obs_cost_), lookahead_x(lookahead_x_), lookahead_y(lookahead_y_), lookahead_theta(lookahead_theta_) {}
 };
 
+
 class PreviewController {
     public:
+        // (Public members are unchanged)
         PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 5);
         bool run_control(bool is_last_goal = false);
         void initialize_dwa_controller();
         void generate_snake_path(double start_x, double start_y, double start_theta);
-        // --- NEW ---
         void generate_straight_path(double start_x, double start_y, double start_theta);
-        // -----------
         void initialize_standalone_operation();
         void run_standalone_control();
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
@@ -64,16 +67,12 @@ class PreviewController {
         ros::Publisher robot_vel_pub_;
         ros::Publisher lookahead_point_pub_;
         ros::Publisher path_pub_;
-        
-        // --- ADDED DEBUG PUBLISHERS ---
         ros::Publisher cross_track_error_pub_;
         ros::Publisher heading_error_pub_;
         ros::Publisher lookahead_heading_error_pub_;
         ros::Publisher current_v_pub_;
         ros::Publisher current_omega_pub_;
         ros::Publisher path_curvature_pub_;
-        // ------------------------------
-        
         ros::Subscriber robot_pose_sub_;
         ros::Subscriber start_moving_sub_;
         ros::Subscriber stop_moving_sub_;
@@ -81,11 +80,10 @@ class PreviewController {
         bool use_start_stop ;
         void start_moving_callback(const std_msgs::Bool::ConstPtr& msg);
         void stop_moving_callback(const std_msgs::Bool::ConstPtr& msg);
-
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
-        
+        // (Most private members are unchanged)
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
         void calculate_all_curvatures(); // Calculate curvatures for all path points
@@ -100,10 +98,7 @@ class PreviewController {
         void boundvel(double ref_vel);
         void boundomega(double ref_omega);
         int closest_point(double x, double y);
-
-
         bool initial_alignment_;
-
         Eigen::Matrix3d A_;
         Eigen::Vector3d B_;
         Eigen::Vector3d D_;
@@ -113,29 +108,21 @@ class PreviewController {
         Eigen::MatrixXd Kf_;
         Eigen::MatrixXd Pc_;
         Eigen::MatrixXd Lmatrix_;
-
         std::vector<double> Q_params_;
         double R_param_;
-
         Eigen::Vector3d x_state;
-
         double v_;
         double omega_;
         double linear_velocity_;
         double dt_;
         double preview_dt_;
         int preview_steps_;
-
-        // Path params
-        // --- MODIFIED ---
         std::string path_type_;
         double straight_path_distance_;
-        // ----------------
         double path_length;
         double path_wavelength;
         double path_amplitude;
         double path_point_spacing;
-
         double cross_track_error_;
         double heading_error_;
         double heading_error_dot_;
@@ -146,58 +133,56 @@ class PreviewController {
         double preview_loop_thresh;
         double robot_radius_;
         double path_curvature_;
-        std::vector<double> path_curvatures_; // Precomputed curvatures for all path points
+        std::vector<double> path_curvatures_;
         double collision_robot_coeff;
         double collision_obstacle_coeff;
-
         double max_vel_;
         double max_omega_;
-
         double vel_acc_;
         double omega_acc_;
-
         double lookahead_distance_;
         double max_cte;
         double max_lookahead_heading_error;
         double goal_distance_threshold_;
-
         double vel_acc_bound;
         double omega_acc_bound;
-
         double kp_adjust_cte;
         double obst_cost_thresh;
-        // Hysteresis thresholds for switching between controllers
         double dwa_activation_cost_thresh_;
         double preview_reactivation_cost_thresh_;
-        // Track which controller is currently active ("DWA" or "PREVIEW")
         std::string active_controller_;
         double stop_robot_cost_thresh;
         double goal_reduce_factor;
         double robot_x;
         double robot_y;
         double robot_theta;
-
         int targetid;
         ros::NodeHandle nh_;
-        
-        // Standalone operation variables
         bool initial_pose_received_;
         bool path_generated_;
         ros::Timer control_timer_;
+
+        // <<< NEW: Parameters for density-based controller switching
+        double density_check_radius_;
+        double density_obstacle_thresh_;
+        double density_dwa_activation_thresh_;
+        double density_preview_reactivation_thresh_;
 };
 
 class dwa_controller {
     public:
-        dwa_controller();
+        // <<< MODIFIED: Removed default constructor, as it's not implemented.
         dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points);
         DWAResult dwa_main_control(double x, double y, double theta, double v, double omega);
         ros::Subscriber occ_sub_;
-        ros::Publisher traj_pub_; // <<< FIX: ADDED DECLARATION HERE
+        ros::Publisher traj_pub_; // <<< FIX: ADDED MISSING DECLARATION
         nav_msgs::OccupancyGrid occ_grid_;
         void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
         bool costmap_received_ = false;
-        // Query normalized cost [0,100] for a world point; returns 100 if unknown/out-of-bounds
-        double query_cost_at_world(double wx, double wy, double robot_x, double robot_y) const;
+        double query_cost_at_world(double wx, double wy, double robot_x, double robot_y, double robot_yaw);
+
+        // <<< NEW: Public function to calculate local obstacle density.
+        double calculate_local_obstacle_density(double robot_x, double robot_y, double radius, double obstacle_cost_threshold);
 
     private:
         ros::NodeHandle nh_;
@@ -224,26 +209,20 @@ class dwa_controller {
         double collision_dist;
         double lookahead_distance_;
         double lookahead_obstacle_cost_thresh_;
-
         double temp_lookahead_x;
         double temp_lookahead_y;
         double temp_lookahead_theta;
-
         double dx;
         double dy;
         double dist;
-
         double obs_cost;
-
         int min_obs_num;
         double min_obs_dist;
         std::vector<std::vector<double>> traj_list_;
         std::vector<Obstacle> obstacles;
-
         const std::vector<Waypoint>* current_path_;
         int* target_idx_;
         const int* max_path_points_;
-
         std::vector<double> calc_dynamic_window(double v, double omega);
         std::vector<std::vector<double>> calc_trajectory(double x, double y, double theta, double v, double omega);
         double calc_obstacle_cost();
@@ -255,9 +234,12 @@ class dwa_controller {
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
         double calc_lookahead_heading_cost();
         bool chkside(double x1, double y1, double path_theta, double robot_x, double robot_y);
+        // <<< MODIFIED: Corrected function signature to include robot_yaw
         bool worldToCostmap(double wx, double wy, int& mx, int& my, double robot_x, double robot_y, double robot_yaw);
         uint8_t getCostmapCost(int mx, int my);
-
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
         double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
+
+        // <<< NEW: Helper function for global world -> map conversion
+        bool worldToMap(double wx, double wy, int& mx, int& my) const;
 };
