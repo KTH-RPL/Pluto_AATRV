@@ -482,19 +482,19 @@ bool PreviewController::run_control(bool is_last_goal) {
     }
 
     // Advance lookahead if point lies in obstacle cells (cost >= 50)
-    if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
-        while (targetid + 1 < max_path_points) {
-            double lx = current_path[targetid].x;
-            double ly = current_path[targetid].y;
-            double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y);
-            if (c >= 50.0) {
-                ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
-                targetid++;
-                continue;
-            }
-            break;
-        }
-    }
+    // if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
+    //     while (targetid + 1 < max_path_points) {
+    //         double lx = current_path[targetid].x;
+    //         double ly = current_path[targetid].y;
+    //         double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y);
+    //         if (c >= 50.0) {
+    //             ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
+    //             targetid++;
+    //             continue;
+    //         }
+    //         break;
+    //     }
+    // }
 
     cross_track_error_ = cross_track_error(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y, current_path[targetid].theta);
 

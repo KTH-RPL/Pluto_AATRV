@@ -53,7 +53,7 @@ preview_controller:
   goal_reduce_factor: 0.5
 
 
-  path_type: "snake"                 # OPTIONS: "snake" or "straight"
+  path_type: "straight"                 # OPTIONS: "snake" or "straight"
   straight_path_distance: 10.0           # [m] Distance to travel in a straight line
 
   # Path params
@@ -91,4 +91,4 @@ dwa_controller:
 
   # Increase obstacle cost 
   occdist_scale: 200.0
-  away_bias: 0.0
+  away_bias: 20.0

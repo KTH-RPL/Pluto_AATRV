@@ -2,13 +2,12 @@
     <rosparam file="$(find robot_controller)/config/preview_controller_config.yaml" command="load" />  
         
     <!-- <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" /> -->
-    <node pkg="robot_controller" type="control_algo.py" name="controller_node" output="screen" />
+    <node pkg="robot_controller" type="control_test_algo.py" name="controller_node" output="screen" />
 
     <arg name="bag_prefix" default="/tmp/robot_controller_data" />
     <arg name="enable_recording" default="true" />
-    
     <node if="$(arg enable_recording)" pkg="rosbag" type="record" name="rosbag_recorder" 
           args="-o $(arg bag_prefix) 
-                /local_costmap /robot_pose /atrv/odom /atrv/cmd_vel /lookahead_point /planned_path /debug/cross_track_error /debug/heading_error /debug/lookahead_heading_error /debug/current_v /debug/current_omega /debug/path_curvature /tf /detected_obstacles"
+                /tf /local_costmap /robot_pose /atrv/odom /atrv/cmd_vel /lookahead_point /planned_path /debug/cross_track_error /debug/heading_error /debug/lookahead_heading_error /debug/current_v /debug/current_omega /debug/path_curvature /tf /detected_obstacles"
           output="screen" />
 </launch>
