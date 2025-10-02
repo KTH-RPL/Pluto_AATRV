@@ -27,7 +27,7 @@ class CostmapGeneratorNode:
         # Costmap properties
         self.map_size_meters = rospy.get_param('~map_size', 20.0)
         self.resolution = rospy.get_param('~resolution', 0.1)
-        self.map_frame = rospy.get_param('~map_frame', 'base_link')
+        self.map_frame = rospy.get_param('~map_frame', 'base_footprint')
         
         # <<< BUG FIX: Introduce a fixed frame for storing obstacle memory
         # This frame should be a non-moving world frame, like 'odom' or 'map'.
@@ -82,23 +82,19 @@ class CostmapGeneratorNode:
         
         # If we have received new obstacle detections in this message...
         if marker_array_msg.markers:
-            # First, clear out the entire memory buffer. We will trust the new sensor data.
-            self.persisted_obstacles = []
-
-            # Now, process and store ONLY the new obstacles.
             for marker in marker_array_msg.markers:
                 try:
                     # Transform the new marker from its original frame to our fixed_frame for storage
                     transform_to_fixed = self.tf_buffer.lookup_transform(
                         self.fixed_frame,
-                        marker.header.frame_id,
+                        self.map_frame,
                         marker.header.stamp,
                         rospy.Duration(0.1)
                     )
 
                     fixed_frame_marker = Marker()
                     fixed_frame_marker.header.frame_id = self.fixed_frame
-                    fixed_frame_marker.points = []
+                    fixed_frame_marker.points = [] 
                     fixed_frame_marker.action = marker.action
                     fixed_frame_marker.type = marker.type
 
@@ -170,6 +166,10 @@ class CostmapGeneratorNode:
                 polygon_points_map = []
                 for world_point in marker.points:
                     mx, my = self.world_to_map(world_point.x, world_point.y)
+
+                    # TESTING comment this one line after test
+                    # mx, my = world_point.x, world_point.y 
+                     
                     if 0 <= mx < self.width_cells and 0 <= my < self.height_cells:
                         polygon_points_map.append([mx, my])
                 
