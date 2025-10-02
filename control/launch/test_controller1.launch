@@ -7,8 +7,8 @@
     <arg name="bag_prefix" default="/tmp/robot_controller_data" />
     <arg name="enable_recording" default="true" />
     
-    <!-- <node if="$(arg enable_recording)" pkg="rosbag" type="record" name="rosbag_recorder" 
+    <node if="$(arg enable_recording)" pkg="rosbag" type="record" name="rosbag_recorder" 
           args="-o $(arg bag_prefix) 
-                /local_costmap /robot_pose /atrv/odom /atrv/cmd_vel /lookahead_point /planned_path /debug/cross_track_error /debug/heading_error /debug/lookahead_heading_error /debug/current_v /debug/current_omega /debug/path_curvature"
-          output="screen" /> -->
+                /local_costmap /robot_pose /atrv/odom /atrv/cmd_vel /lookahead_point /planned_path /debug/cross_track_error /debug/heading_error /debug/lookahead_heading_error /debug/current_v /debug/current_omega /debug/path_curvature /tf /detected_obstacles"
+          output="screen" />
 </launch>
