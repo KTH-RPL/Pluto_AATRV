@@ -884,7 +884,7 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
     
-    occ_sub_ = nh_.subscribe("/local_costmap", 1, &dwa_controller::costmap_callback, this);
+    occ_sub_ = nh_.subscribe("/global_costmap", 1, &dwa_controller::costmap_callback, this);
     
     // --- NEW --- Initialize visualization publisher
     traj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("dwa_trajectories", 1);
@@ -943,10 +943,11 @@ void dwa_controller::costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& m
 
 double dwa_controller::query_cost_at_world(double wx, double wy, double robot_x, double robot_y, double robot_yaw) {
     if (!costmap_received_) {
-            return 0.0;
-        }
+        return 0.0;
+    }
 
     int mx, my;
+    // For global costmap, we don't need robot pose parameters but keep signature for compatibility
     if (worldToCostmap(wx, wy, mx, my, robot_x, robot_y, robot_yaw)) {
         // The point is within the costmap bounds, so we can get its cost.
         int idx = my * occ_grid_.info.width + mx;
