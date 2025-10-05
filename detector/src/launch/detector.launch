@@ -2,10 +2,12 @@
     <!-- ================================================================== -->
     <!-- Original Obstacle Detector Node -->
     <!-- ================================================================== -->
+    <node name="corrected_robot_pose_publisher" pkg="detector" type="pose_corrector.py" output="screen"/>
+    <!-- <node name="robot_pose_publisher" pkg="robot_controller" type="publishers1.py" output="screen"/> -->
     <node name="detector" pkg="detector" type="detector.py" output="screen">
         <!-- ... (detector parameters are unchanged) ... -->
         <param name="depth_topic"           value="/rsD455_node0/depth/image_rect_raw"/>
-        <param name="obstacle_topic"        value="/detected_obstacles"/>
+        <param name="obstacle_topic"        value="/detected_obstacles1"/>
         <param name="output_frame_id"       value="base_footprint"/>
         <param name="safety_buffer"         value="0.1"/>
         <param name="depth_scale_factor"    value="1000.0"/>
@@ -30,29 +32,35 @@
     <!-- ================================================================== -->
     <!-- UPDATED: Costmap Generator Node with Gradient Inflation -->
     <!-- ================================================================== -->
-    <node name="costmap_generator" pkg="detector" type="costmap.py" output="screen">
-        <!-- Input/Output Topics -->
-        <param name="obstacle_topic" value="/detected_obstacles"/>
-        <param name="costmap_topic"  value="/local_costmap"/>
+    <node pkg="detector" type="costmap.py" name="global_costmap_generator" output="screen">
+        <!-- Enable debug logging -->
+        <!-- <env name="ROSCONSOLE_CONFIG_FILE" value="$(find your_package_name)/config/debug.config" /> -->
+        <!-- Or set log level directly -->
+        <!-- <param name="log_level" value="debug" /> -->
+        <!-- Topics -->
+        <param name="obstacle_topic" value="/detected_obstacles1" />
+        <param name="costmap_topic" value="/global_costmap" />
+        <param name="robot_pose_topic" value="/robot_pose" />
         
-        <!-- Frame ID for the costmap -->
-        <param name="map_frame"      value="base_footprint"/>
-
-        <!-- Costmap Dimensions -->
-        <param name="map_size"       value="20.0"/> <!-- meters -->
-        <param name="resolution"     value="0.1"/>  <!-- meters per cell -->
-
-        <!-- Inflation and Gradient Parameters -->
-        <!-- Cost is 100 (max) from the obstacle edge out to this distance -->
-        <param name="inflation_radius"    value="0.7"/> <!-- meters (matches robot radius) -->
-        <!-- Cost linearly decreases from 100 to 0 between inflation_radius and this distance -->
-        <param name="gradient_end_radius" value="1.2"/> <!-- meters -->
-        <!-- The maximum cost value to assign (standard is 100 for OccupancyGrid) -->
-        <param name="max_cost"            value="100"/>
+        <!-- Frames -->
+        <param name="global_frame" value="odom" />
+        
+        <!-- Costmap Properties -->
+        <param name="map_size" value="20.0" />        <!-- Size of local window around robot (meters) -->
+        <param name="resolution" value="0.1" />        <!-- Resolution (meters/cell) -->
+        
+        <!-- Inflation Parameters -->
+        <param name="inflation_radius" value="0.4" />       <!-- Lethal radius (meters) -->
+        <param name="gradient_end_radius" value="1.2" />    <!-- End of gradient zone (meters) -->
+        <param name="max_cost" value="100" />               <!-- Maximum cost value -->
+        
+        <!-- Memory Parameters -->
+        <param name="memory_duration" value="2.0" />   <!-- How long to remember obstacles (seconds) -->
     </node>
 
     <!-- ================================================================== -->
     <!-- RViz Visualization -->
     <!-- ================================================================== -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" required="true"/>
+    
 </launch>
