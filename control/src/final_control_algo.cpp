@@ -1273,10 +1273,20 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double best_lookahead_y = 0.0;
     double best_lookahead_theta = 0.0;
 
-    // --- NEW --- Visualization Setup
+    // --- NEW --- For logging the cost matrix
+    struct DWASample {
+        double v;
+        double omega;
+        double cost;
+    };
+    std::vector<DWASample> all_samples;
+    // --- END NEW ---
+
+    // --- MODIFIED --- Visualization Setup
     visualization_msgs::MarkerArray traj_markers;
     int marker_id = 0;
-    // --------------------------------
+    int best_marker_id = -1; // Keep track of the best marker
+    // --- END MODIFIED ---
 
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
@@ -1284,67 +1294,25 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
         for (int j = 0; j < omega_samples_; ++j) {
             double omega_sample = dw[2] + (dw[3] - dw[2]) * j / std::max(1, omega_samples_ - 1);
 
-            // Pass Robot's current position and heading to calc_trajectory
             traj_list_ = calc_trajectory(x, y, theta, v_sample, omega_sample);
-            // Use lookahead heading cost instead of lookahead cost
-            // Pass Robot's current position to calc_lookahead_heading_cost
             double lookahead_heading_cost = calc_lookahead_heading_cost();
-
-            // Use lookahead point derived uptop for calc_path_cost
             double path_cost = calc_path_cost();
-            // double lookahead_cost = calc_lookahead_cost();
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
             obs_cost = calc_obstacle_cost();            
-
-            // Check this, basically if no collision, can increase speed to move, this may cause issue, increase speed_ref_bias to maneuver around obstacles
-            // if (obs_cost > 0) speed_ref_cost = 0;
-
             double away_cost = calc_away_from_obstacle_cost();
 
-            // Experiment by removing some cost if needed
-            double total_cost = path_distance_bias_ * path_cost //  lookahead_heading_cost 
-            // + path_distance_bias_ * path_cost 
-            // + goal_distance_bias_ * lookahead_cost 
+            double total_cost = path_distance_bias_ * path_cost 
             + lookahead_heading_bias_ * lookahead_heading_cost 
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
             
-            // Added V and Omega to output
-            // ROS_INFO_NAMED("cost_calculation",
-            //     "--- Trajectory Cost Details ---\n"
-            //     "\tv_sample = %.2f, omega_sample = %.2f\n"
-            //     "\tPath Cost      (bias * cost): %.2f * %.2f = %.2f\n"
-            //     "\tLookahead Cost (bias * cost): %.2f * %.2f = %.2f\n"
-            //     "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
-            //     "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
-            //     "\tAway Cost      (bias * cost): %.2f * %.2f = %.2f\n"
-            //     "----------------------------------\n"
-            //     "\t>>> Total Cost: %.2f",
-            //     // Arguments for the format string:
-            //     v_sample, omega_sample,
-            //     path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
-            //     goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost,
-            //     occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
-            //     speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
-            //     away_bias_, away_cost, away_bias_ * away_cost,
-            //     total_cost
-            // );
+            // --- NEW --- Store sample for matrix logging
+            all_samples.push_back({v_sample, omega_sample, total_cost});
+            // --- END NEW ---
 
-            ROS_INFO_NAMED("cost_calculation",
-                "[V=%.2f, Omega=%.2f] Path=%.2f, Lookahead=%.2f, Obs=%.2f, SpeedRef=%.2f, Away=%.2f, Total=%.2f",
-                v_sample, omega_sample,
-                path_distance_bias_ * path_cost,
-                lookahead_heading_bias_ * lookahead_heading_cost,
-                occdist_scale_ * obs_cost,
-                speed_ref_bias_ * speed_ref_cost,
-                away_bias_ * away_cost,
-                total_cost
-            );
-
-            // --- NEW --- Visualization Logic
+            // --- MODIFIED --- Visualization Logic
             visualization_msgs::Marker traj_marker;
-            // Assuming odom is your fixed frame, change if necessary
             traj_marker.header.frame_id = "odom"; 
             traj_marker.header.stamp = ros::Time::now();
             traj_marker.ns = "dwa_paths";
@@ -1360,7 +1328,6 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                  traj_marker.color.r = 1.0; traj_marker.color.g = 0.0; traj_marker.color.b = 0.0; traj_marker.color.a = 1.0;
             } else {
                 // Green -> Yellow gradient for valid paths
-                // Normalize cost for coloring. 300.0 is an arbitrary scaling factor for visualization.
                 float normalized_cost = std::min(1.0f, static_cast<float>(total_cost / 300.0)); 
                  traj_marker.color.r = normalized_cost;
                  traj_marker.color.g = 1.0 - normalized_cost;
@@ -1376,7 +1343,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 traj_marker.points.push_back(p);
             }
             traj_markers.markers.push_back(traj_marker);
-            // --------------------------------
+            // --- END MODIFIED ---
 
             if (obs_cost > max_obstacle_cost) {
                 max_obstacle_cost = obs_cost;
@@ -1388,27 +1355,64 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 min_cost = total_cost;
                 best_v = v_sample;
                 best_omega = omega_sample;
-                // Store the lookahead point for this best trajectory
                 best_lookahead_x = temp_lookahead_x;
                 best_lookahead_y = temp_lookahead_y;
                 best_lookahead_theta = temp_lookahead_theta;
+                // --- NEW --- Store the ID of the best marker
+                best_marker_id = traj_marker.id;
+                // --- END NEW ---
             }
         }
     }
     
-    // --- NEW --- Publish the markers
+    // --- NEW --- Highlight the best trajectory marker
+    if (best_marker_id != -1) {
+        for (auto& marker : traj_markers.markers) {
+            if (marker.id == best_marker_id) {
+                marker.color.r = 0.0f; // Green
+                marker.color.g = 1.0f;
+                marker.color.b = 0.0f;
+                marker.color.a = 1.0f; // Fully opaque
+                marker.scale.x = 0.04; // Make it thicker
+                break; // Found it, no need to search further
+            }
+        }
+    }
+    // --- END NEW ---
+    
     traj_pub_.publish(traj_markers);
-    // ------------------------------
 
-    // create a DWAResult struct to hold the results
+    // --- NEW --- Log the cost matrix for debugging
+    std::stringstream ss;
+    ss << "\n--- DWA Trajectory Evaluation Summary ---\n";
+    ss << "      v    |   omega   |      cost\n";
+    ss << "---------------------------------------\n";
+    for (const auto& sample : all_samples) {
+        ss << std::fixed << std::setprecision(3) 
+           << std::setw(8) << sample.v << " | " 
+           << std::setw(9) << sample.omega << " | " 
+           << std::setw(10);
+        
+        if (std::isinf(sample.cost)) {
+            ss << "inf";
+        } else {
+            ss << sample.cost;
+        }
+
+        if (sample.v == best_v && sample.omega == best_omega) {
+            ss << "  <-- BEST";
+        }
+        ss << "\n";
+    }
+    ROS_INFO_STREAM(ss.str());
+    // --- END NEW ---
+
+
     DWAResult result;
     ROS_INFO("DWA max obstacle avg cost (0-1) = %f", max_obstacle_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
-    // Scale to match visualiser hysteresis, where thresholds were ~10 and 5 (post-weighting).
-    // We emulate by multiplying normalized cost with occdist_scale_ (default 10) to keep similar magnitude.
     result.obs_cost = occdist_scale_ * max_obstacle_cost;
-    // Store the lookahead point corresponding to the best trajectory
     result.lookahead_x = best_lookahead_x;
     result.lookahead_y = best_lookahead_y;
     result.lookahead_theta = best_lookahead_theta;
