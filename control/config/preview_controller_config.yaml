@@ -20,8 +20,8 @@ preview_controller:
   omega_acc: 1.5
   
   # Robot physical properties
-  robot_radius: 0.5
-  lookahead_distance: 0.5
+  robot_radius: 0.7
+  lookahead_distance: 1.5
   
   # Error and goal thresholds
   max_cte: 1.5
@@ -36,10 +36,10 @@ preview_controller:
   R: 0.001
   
   # --- NEW: Density-based controller switching ---
-  density_check_radius: 2.0                # [m] Radius to check for obstacles
-  density_obstacle_thresh: 50.0            # [0-100] Cost value to count as obstacle
-  density_dwa_activation_thresh: 40.0      # [%] Switch PREVIEW -> DWA if density > this
-  density_preview_reactivation_thresh: 20.0  # [%] Switch DWA -> PREVIEW if density <= this
+  density_check_radius: 5.0                # [m] Radius to check for obstacles
+  density_obstacle_thresh: 5.0            # [0-100] Cost value to count as obstacle
+  density_dwa_activation_thresh: 2.0      # [%] Switch PREVIEW -> DWA if density > this
+  density_preview_reactivation_thresh: 1.0  # [%] Switch DWA -> PREVIEW if density <= this
   
   # --- LEGACY: Cost-based switching (no longer used by default logic) ---
   dwa_activation_cost_thresh: 10.0
@@ -47,7 +47,7 @@ preview_controller:
   
 dwa_controller:
   # Prediction and sampling
-  predict_time: 4.0
+  predict_time: 10.0
   vx_samples: 3
   omega_samples: 5
   dt_dwa: 0.1
@@ -66,4 +66,4 @@ dwa_controller:
   goal_distance_bias: 1.0
   speed_ref_bias: 10.0
   occdist_scale: 200.0
-  away_bias: 20.0
+  away_bias: 10.0

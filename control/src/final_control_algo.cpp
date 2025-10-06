@@ -424,7 +424,7 @@ void PreviewController::lookahead_heading_error(double x_ref, double y_ref, doub
     
     // Safety check for NaN
     if (std::isnan(lookahead_heading_error_) || std::isinf(lookahead_heading_error_)) {
-        ROS_WARN("NaN/Inf detected in lookahead_heading_error, setting to 0");
+        ROS_INFO("NaN/Inf detected in lookahead_heading_error, setting to 0");
         lookahead_heading_error_ = 0.0;
     }
 }
@@ -433,7 +433,7 @@ void PreviewController::lookahead_heading_error(double x_ref, double y_ref, doub
 void PreviewController::boundvel(double ref_vel) {
     // Safety check for NaN
     if (std::isnan(ref_vel) || std::isinf(ref_vel)) {
-        ROS_WARN("NaN/Inf detected in ref_vel, keeping current v_");
+        ROS_INFO("NaN/Inf detected in ref_vel, keeping current v_");
         return;
     }
     
@@ -452,7 +452,7 @@ void PreviewController::boundvel(double ref_vel) {
 void PreviewController::boundomega(double ref_omega) {
     // Safety check for NaN
     if (std::isnan(ref_omega) || std::isinf(ref_omega)) {
-        ROS_WARN("NaN/Inf detected in ref_omega, keeping current omega_");
+        ROS_INFO("NaN/Inf detected in ref_omega, keeping current omega_");
         return;
     }
     
@@ -498,7 +498,7 @@ bool PreviewController::run_control(bool is_last_goal) {
             double ly = current_path[targetid].y;
             double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y, robot_theta);
             if (c >= 50.0) {
-                ROS_WARN_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
+                ROS_INFO_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
                 targetid++;
                 continue;
             }
@@ -547,7 +547,7 @@ bool PreviewController::run_control(bool is_last_goal) {
         boundvel(linear_velocity_);
     // Evaluate DWA each cycle to compute best sample and max obstacle cost
     DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
-    ROS_INFO("DWA max obstacle cost = %f", dwa_result.obs_cost);
+    // ROS_INFO("DWA max obstacle cost = %f", dwa_result.obs_cost);
 
     // Hysteresis switching between PREVIEW and DWA
 
@@ -555,14 +555,14 @@ bool PreviewController::run_control(bool is_last_goal) {
     // if (active_controller_ == std::string("PREVIEW")) {
     //     if (dwa_result.obs_cost > dwa_activation_cost_thresh_) {
     //         use_preview = false; // switch to DWA
-    //         ROS_WARN("SWITCH: PREVIEW -> DWA (cost %.2f > %.2f)", dwa_result.obs_cost, dwa_activation_cost_thresh_);
+    //         ROS_INFO("SWITCH: PREVIEW -> DWA (cost %.2f > %.2f)", dwa_result.obs_cost, dwa_activation_cost_thresh_);
     //     } else {
     //         use_preview = true; // stay on preview
     //     }
     // } else { // active_controller_ == "DWA"
     //     if (dwa_result.obs_cost <= preview_reactivation_cost_thresh_) {
     //         use_preview = true; // switch back to preview
-    //         ROS_WARN("SWITCH: DWA -> PREVIEW (cost %.2f <= %.2f)", dwa_result.obs_cost, preview_reactivation_cost_thresh_);
+    //         ROS_INFO("SWITCH: DWA -> PREVIEW (cost %.2f <= %.2f)", dwa_result.obs_cost, preview_reactivation_cost_thresh_);
     //     } else {
     //         use_preview = false; // stay on DWA
     //     }
@@ -571,14 +571,14 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (active_controller_ == std::string("PREVIEW")) {
         if (obstacle_density > density_dwa_activation_thresh_) {
             use_preview = false; // switch to DWA
-            ROS_WARN("SWITCH: PREVIEW -> DWA (density %.2f%% > %.2f%%)", obstacle_density, density_dwa_activation_thresh_);
+            ROS_INFO("SWITCH: PREVIEW -> DWA (density %.2f%% > %.2f%%)", obstacle_density, density_dwa_activation_thresh_);
         } else {
             use_preview = true; // stay on preview
         }
     } else { // active_controller_ == "DWA"
         if (obstacle_density <= density_preview_reactivation_thresh_) {
             use_preview = true; // switch back to preview
-            ROS_WARN("SWITCH: DWA -> PREVIEW (density %.2f%% <= %.2f%%)", obstacle_density, density_preview_reactivation_thresh_);
+            ROS_INFO("SWITCH: DWA -> PREVIEW (density %.2f%% <= %.2f%%)", obstacle_density, density_preview_reactivation_thresh_);
         } else {
             use_preview = false; // stay on DWA
         }
@@ -733,11 +733,11 @@ bool PreviewController::chkside(double path_theta) {
 void PreviewController::compute_control(double cross_track_error, double heading_error, double path_curvature) {
     // Safety checks for input parameters
     if (std::isnan(cross_track_error) || std::isinf(cross_track_error)) {
-        ROS_WARN("NaN/Inf in cross_track_error, setting to 0");
+        ROS_INFO("NaN/Inf in cross_track_error, setting to 0");
         cross_track_error = 0.0;
     }
     if (std::isnan(heading_error) || std::isinf(heading_error)) {
-        ROS_WARN("NaN/Inf in heading_error, setting to 0");
+        ROS_INFO("NaN/Inf in heading_error, setting to 0");
         heading_error = 0.0;
     }
     
@@ -1012,7 +1012,7 @@ bool dwa_controller::worldToMap(double wx, double wy, int& mx, int& my) const {
 
 double dwa_controller::calculate_local_obstacle_density(double robot_x, double robot_y, double radius, double obstacle_cost_threshold) {
     if (!costmap_received_) {
-        ROS_WARN_THROTTLE(2.0, "Cannot calculate obstacle density, costmap not received. Defaulting to 100%%.");
+        ROS_INFO_THROTTLE(2.0, "Cannot calculate obstacle density, costmap not received. Defaulting to 100%%.");
         return 100.0; // Safe default: assume high density if no map
     }
 
@@ -1024,7 +1024,7 @@ double dwa_controller::calculate_local_obstacle_density(double robot_x, double r
 
     int robot_mx, robot_my;
     if (!worldToMap(robot_x, robot_y, robot_mx, robot_my)) {
-        ROS_WARN_THROTTLE(2.0, "Robot is outside the local costmap bounds. Cannot calculate density.");
+        ROS_INFO_THROTTLE(2.0, "Robot is outside the local costmap bounds. Cannot calculate density.");
         return 100.0; // Robot is off the map, act cautiously
     }
     
@@ -1210,6 +1210,7 @@ double dwa_controller::calc_obstacle_cost() {
     }
 
     // Return average cost (normalized 0-1)
+    ROS_INFO("Trajectory sum obs cost %f, len %d", cost_sum, static_cast<int>(traj_list_.size()));
     double avg_cost = cost_sum / std::max(1, static_cast<int>(traj_list_.size()));
     ROS_INFO("Obstacle avg cost (0-1) = %f", avg_cost);
     return avg_cost;
@@ -1232,7 +1233,7 @@ double dwa_controller::calc_away_from_obstacle_cost() {
     double exp_cost = 0.0;
     double total_exp_cost = 0.0;
     int item = 0;
-
+    double max_exp_cost = 0.0;
     
     // Iterate through trajectory
     for (const auto& pt : traj_list_) {
@@ -1247,14 +1248,14 @@ double dwa_controller::calc_away_from_obstacle_cost() {
         total_exp_cost =  total_exp_cost + exp_cost;
         item = item + 1;
         
-        // if (exp_cost > max_exp_cost) {
-        //     max_exp_cost = exp_cost;
-        // }
+        if (exp_cost > max_exp_cost) {
+            max_exp_cost = exp_cost;
+        }
     }
 
     // Return max exponential cost instead of average
-    // return max_exp_cost;
-    return total_exp_cost/item;
+    return max_exp_cost;
+    // return total_exp_cost/item;
 }
 
 // Main cost calc
@@ -1297,6 +1298,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             traj_list_ = calc_trajectory(x, y, theta, v_sample, omega_sample);
             double lookahead_heading_cost = calc_lookahead_heading_cost();
             double path_cost = calc_path_cost();
+            double lookahead_cost = calc_lookahead_cost();
             double speed_ref_cost = calc_speed_ref_cost(v_sample);
             obs_cost = calc_obstacle_cost();            
             double away_cost = calc_away_from_obstacle_cost();
@@ -1307,9 +1309,37 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
             
-            // --- NEW --- Store sample for matrix logging
-            all_samples.push_back({v_sample, omega_sample, total_cost});
-            // --- END NEW ---
+            // Added V and Omega to output
+            ROS_INFO_NAMED("cost_calculation",
+                "--- Trajectory Cost Details ---\n"
+                "\tv_sample = %.2f, omega_sample = %.2f\n"
+                "\tPath Cost      (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tLh headin Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tAway Cost      (bias * cost): %.2f * %.2f = %.2f\n"
+                "----------------------------------\n"
+                "\t>>> Total Cost: %.2f",
+                // Arguments for the format string:
+                v_sample, omega_sample,
+                path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
+                goal_distance_bias_, lookahead_cost, lookahead_heading_bias_ * lookahead_heading_cost,
+                occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
+                speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
+                away_bias_, away_cost, away_bias_ * away_cost,
+                total_cost
+            );
+
+            ROS_INFO_NAMED("cost_calculation",
+                "[V=%.2f, Omega=%.2f] Path=%.2f, Lookahead=%.2f, Obs=%.2f, SpeedRef=%.2f, Away=%.2f, Total=%.2f",
+                v_sample, omega_sample,
+                path_distance_bias_ * path_cost,
+                lookahead_heading_bias_ * lookahead_heading_cost,
+                occdist_scale_ * obs_cost,
+                speed_ref_bias_ * speed_ref_cost,
+                away_bias_ * away_cost,
+                total_cost
+            );
 
             // --- MODIFIED --- Visualization Logic
             visualization_msgs::Marker traj_marker;
@@ -1409,7 +1439,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
 
 
     DWAResult result;
-    ROS_INFO("DWA max obstacle avg cost (0-1) = %f", max_obstacle_cost);
+    // ROS_INFO("DWA max obstacle avg cost (0-1) = %f", max_obstacle_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
     result.obs_cost = occdist_scale_ * max_obstacle_cost;

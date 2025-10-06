@@ -5,7 +5,7 @@ set -e
 
 # --- 1. DEFINE FILE AND PACKAGE NAMES ---
 PACKAGE_NAME="robot_controller"
-LAUNCH_FILE_NAME="robot_controller.launch"
+LAUNCH_FILE_NAME="test_controller.launch"
 CONFIG_FILE_NAME="preview_controller_config.yaml"
 
 # --- 2. GENERATE TIMESTAMPED LOG FILENAME ---
