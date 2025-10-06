@@ -1311,7 +1311,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost;
-            
+            all_samples.push_back({v_sample, omega_sample, total_cost});
             // Added V and Omega to output
             ROS_INFO_NAMED("cost_calculation",
                 "--- Trajectory Cost Details ---\n"
