@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <thread>
 #include <cmath>
+#include <sstream> // For std::stringstream
+#include <iomanip> // For std::fixed, std::setprecision
+
 // Added for DWA trajectory visualization
 #include <visualization_msgs/MarkerArray.h> 
 
