@@ -2,7 +2,7 @@
     <arg name="log_file" default="/tmp/robot_controller_$(eval time.strftime('%Y-%m-%d_%H-%M-%S')).log" />
     
     <node name="log_yaml_config" pkg="roslaunch" type="roslaunch-check"
-          launch-prefix="bash -c 'echo; echo &apos;--- CONFIGURATION PARAMETERS from preview_controller_config.yaml ---&apos;; echo; cat $(find robot_controller)/config/preview_controller_config.yaml; echo; echo &apos;--- END OF CONFIGURATION ---&apos;; echo; echo &apos;--- STARTING NODE LOGS ---&apos;; echo &apos; &apos; 2>&1 | tee $(arg log_file)'"
+          launch-prefix="bash -c 'echo; echo &quot;--- CONFIGURATION PARAMETERS from preview_controller_config.yaml ---&quot;; echo; cat $(find robot_controller)/config/preview_controller_config.yaml; echo; echo &quot;--- END OF CONFIGURATION ---&quot;; echo; echo &quot;--- STARTING NODE LOGS ---&quot;; echo &quot; &quot; 2>&1 | tee $(arg log_file)'"
     />
 
     <rosparam file="$(find robot_controller)/config/preview_controller_config.yaml" command="load" />  
