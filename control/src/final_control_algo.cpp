@@ -1310,29 +1310,32 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             obs_cost = calc_obstacle_cost();            
             double away_cost = calc_away_from_obstacle_cost();
 
-            double total_cost = path_distance_bias_ * path_cost 
+            double total_cost = path_distance_bias_ * path_cost // Path Cost
             + lookahead_heading_bias_ * lookahead_heading_cost 
+            + goal_distance_bias_ * lookahead_cost // Goal Cost
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
-            + away_bias_ * away_cost;
+            + away_bias_ * away_cost; // Away Cost
             all_samples.push_back({v_sample, omega_sample, total_cost});
             // Added V and Omega to output
             ROS_INFO_NAMED("cost_calculation",
                 "--- Trajectory Cost Details ---\n"
                 "\tv_sample = %.2f, omega_sample = %.2f\n"
                 "\tPath Cost      (bias * cost): %.2f * %.2f = %.2f\n"
-                "\tLh headin Cost (bias * cost): %.2f * %.2f = %.2f\n"
-                "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
-                "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                // "\tLh headin Cost (bias * cost): %.2f * %.2f = %.2f\n"
+                "\tGoal Cost      (bias * cost): %.2f * %.2f = %.2f\n"
+                // "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
+                // "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
                 "\tAway Cost      (bias * cost): %.2f * %.2f = %.2f\n"
                 "----------------------------------\n"
                 "\t>>> Total Cost: %.2f",
                 // Arguments for the format string:
                 v_sample, omega_sample,
                 path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
-                lookahead_heading_bias_, lookahead_heading_cost, lookahead_heading_bias_ * lookahead_heading_cost,
-                occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
-                speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
+                // lookahead_heading_bias_, lookahead_heading_cost, lookahead_heading_bias_ * lookahead_heading_cost,
+                goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost
+                // occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
+                // speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
                 away_bias_, away_cost, away_bias_ * away_cost,
                 total_cost
             );
