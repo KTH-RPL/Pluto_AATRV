@@ -979,9 +979,13 @@ bool dwa_controller::worldToCostmap(double wx, double wy, int& mx, int& my, doub
     double origin_y = occ_grid_.info.origin.position.y;
     double resolution = occ_grid_.info.resolution;
 
-    // Convert to costmap indices
-    mx = static_cast<int>((rel_x - origin_x) / resolution);
-    my = static_cast<int>((rel_y - origin_y) / resolution);
+    // // Convert to costmap indices
+    // mx = static_cast<int>((rel_x - origin_x) / resolution);
+    // my = static_cast<int>((rel_y - origin_y) / resolution);
+
+    // Convert to costmap indices (GLOBAL FRAME COSTMAP)
+    mx = static_cast<int>((wx - origin_x) / resolution);
+    my = static_cast<int>((wy - origin_y) / resolution);
 
     // Check if within costmap bounds
     return (mx >= 0 && mx < static_cast<int>(occ_grid_.info.width) &&
