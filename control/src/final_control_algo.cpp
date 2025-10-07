@@ -967,12 +967,12 @@ bool dwa_controller::worldToCostmap(double wx, double wy, int& mx, int& my, doub
         return false;
 
     // Calculate relative x and y to robot, get odom pose diff
-    double dx = wx - robot_x;
-    double dy = wy - robot_y;
+    // double dx = wx - robot_x;
+    // double dy = wy - robot_y;
     
-    // Convert it to base Link by applying rotation.
-    double rel_x = dx * cos(robot_yaw) + dy * sin(robot_yaw); // forward axis
-    double rel_y = -dx * sin(robot_yaw) + dy * cos(robot_yaw); // left axis
+    // // Convert it to base Link by applying rotation.
+    // double rel_x = dx * cos(robot_yaw) + dy * sin(robot_yaw); // forward axis
+    // double rel_y = -dx * sin(robot_yaw) + dy * cos(robot_yaw); // left axis
 
     // Get origin and resolution of costmap 
     double origin_x = occ_grid_.info.origin.position.x;
@@ -1330,7 +1330,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 // Arguments for the format string:
                 v_sample, omega_sample,
                 path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
-                goal_distance_bias_, lookahead_cost, lookahead_heading_bias_ * lookahead_heading_cost,
+                lookahead_heading_bias_, lookahead_heading_cost, lookahead_heading_bias_ * lookahead_heading_cost,
                 occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
                 speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
                 away_bias_, away_cost, away_bias_ * away_cost,
