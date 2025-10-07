@@ -1286,6 +1286,9 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
         double v;
         double omega;
         double cost;
+        double goal_cost;
+        double away_cost;
+        double path_cost;
     };
     std::vector<DWASample> all_samples;
     // --- END NEW ---
@@ -1316,7 +1319,16 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             + occdist_scale_ * obs_cost 
             + speed_ref_bias_ * speed_ref_cost 
             + away_bias_ * away_cost; // Away Cost
-            all_samples.push_back({v_sample, omega_sample, total_cost});
+            
+            all_samples.push_back({
+                v_sample, 
+                omega_sample, 
+                total_cost,
+                goal_distance_bias_ * goal_dist_cost,
+                away_bias_ * away_cost,
+                path_distance_bias_ * path_cost
+            });
+
             // Added V and Omega to output
             ROS_INFO_NAMED("cost_calculation",
                 "--- Trajectory Cost Details ---\n"
@@ -1333,7 +1345,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 v_sample, omega_sample,
                 path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
                 // lookahead_heading_bias_, lookahead_heading_cost, lookahead_heading_bias_ * lookahead_heading_cost,
-                goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost
+                goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost,
                 // occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
                 // speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
                 away_bias_, away_cost, away_bias_ * away_cost,
@@ -1409,9 +1421,9 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     if (best_marker_id != -1) {
         for (auto& marker : traj_markers.markers) {
             if (marker.id == best_marker_id) {
-                marker.color.r = 0.0f; // Green
-                marker.color.g = 1.0f;
-                marker.color.b = 0.0f;
+                marker.color.r = 0.0f; // blue for best path
+                marker.color.g = 0.0f;
+                marker.color.b = 1.0f;
                 marker.color.a = 1.0f; // Fully opaque
                 marker.scale.x = 0.04; // Make it thicker
                 break; // Found it, no need to search further
@@ -1425,18 +1437,21 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     // --- NEW --- Log the cost matrix for debugging
     std::stringstream ss;
     ss << "\n--- DWA Trajectory Evaluation Summary ---\n";
-    ss << "      v    |   omega   |      cost\n";
-    ss << "---------------------------------------\n";
+    ss << "   v   |  omega  | Goal Cost | Away Cost | Path Cost | Total Cost\n";
+    ss << "----------------------------------------------------------------------\n";
     for (const auto& sample : all_samples) {
         ss << std::fixed << std::setprecision(3) 
-           << std::setw(8) << sample.v << " | " 
-           << std::setw(9) << sample.omega << " | " 
+           << std::setw(7) << sample.v << " | " 
+           << std::setw(7) << sample.omega << " | "
+           << std::setw(9) << sample.goal_cost << " | " 
+           << std::setw(9) << sample.away_cost << " | " 
+           << std::setw(9) << sample.path_cost << " | " 
            << std::setw(10);
         
-        if (std::isinf(sample.cost)) {
+        if (std::isinf(sample.total_cost)) {
             ss << "inf";
         } else {
-            ss << sample.cost;
+            ss << sample.total_cost;
         }
 
         if (sample.v == best_v && sample.omega == best_omega) {
