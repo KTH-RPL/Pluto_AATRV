@@ -7,7 +7,7 @@
     <node name="detector" pkg="detector" type="detector.py" output="screen">
         <!-- ... (detector parameters are unchanged) ... -->
         <param name="depth_topic"           value="/rsD455_node0/depth/image_rect_raw"/>
-        <param name="obstacle_topic"        value="/detected_obstacles1"/>
+        <param name="obstacle_topic"        value="/detected_obstacles"/>
         <param name="output_frame_id"       value="base_footprint"/>
         <param name="safety_buffer"         value="0.1"/>
         <param name="depth_scale_factor"    value="1000.0"/>
@@ -38,7 +38,7 @@
         <!-- Or set log level directly -->
         <!-- <param name="log_level" value="debug" /> -->
         <!-- Topics -->
-        <param name="obstacle_topic" value="/detected_obstacles1" />
+        <param name="obstacle_topic" value="/detected_obstacles" />
         <param name="costmap_topic" value="/global_costmap" />
         <param name="robot_pose_topic" value="/robot_pose" />
         
@@ -50,12 +50,12 @@
         <param name="resolution" value="0.1" />        <!-- Resolution (meters/cell) -->
         
         <!-- Inflation Parameters -->
-        <param name="inflation_radius" value="0.4" />       <!-- Lethal radius (meters) -->
-        <param name="gradient_end_radius" value="1.2" />    <!-- End of gradient zone (meters) -->
+        <param name="inflation_radius" value="0.5" />       <!-- Lethal radius (meters) , default 0.5-->
+        <param name="gradient_end_radius" value="1" />    <!-- End of gradient zone (meters) -->
         <param name="max_cost" value="100" />               <!-- Maximum cost value -->
         
         <!-- Memory Parameters -->
-        <param name="memory_duration" value="2.0" />   <!-- How long to remember obstacles (seconds) -->
+        <param name="memory_duration" value="5.0" />   <!-- How long to remember obstacles (seconds) -->
     </node>
 
     <!-- ================================================================== -->

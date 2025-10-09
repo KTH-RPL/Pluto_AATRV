@@ -1141,6 +1141,8 @@ double dwa_controller::calc_lookahead_heading_cost() {
     //     temp_look_ahead_idx++;
     // }
 
+    temp_look_ahead_idx = -1; // Use Goal Point as lookahead
+
     temp_lookahead_x = (*current_path_)[temp_look_ahead_idx].x;
     temp_lookahead_y = (*current_path_)[temp_look_ahead_idx].y;
     temp_lookahead_theta = (*current_path_)[temp_look_ahead_idx].theta;
@@ -1181,6 +1183,7 @@ double dwa_controller::calc_lookahead_cost() {
         return 0.0;
 
     auto last_point = traj_list_.back();
+    // auto last_point = traj_list_[-1]
     double traj_x = last_point[0];
     double traj_y = last_point[1];
     int current_target = *target_idx_;
@@ -1249,7 +1252,7 @@ double dwa_controller::calc_away_from_obstacle_cost() {
         if (!worldToCostmap(pt[0], pt[1], mx, my, traj_list_[0][0], traj_list_[0][1], traj_list_[0][2]))
             continue;
 
-        double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0;
+        double c = static_cast<double>(getCostmapCost(mx, my)) / 100.0; // 0-1
         double exp_cost = std::exp(c); // exponential penalty
 
         total_exp_cost =  total_exp_cost + exp_cost;
@@ -1261,8 +1264,8 @@ double dwa_controller::calc_away_from_obstacle_cost() {
     }
 
     // Return max exponential cost instead of average
-    return max_exp_cost;
-    // return total_exp_cost/item;
+    // return max_exp_cost;
+    return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
 }
 
 // Main cost calc
@@ -1285,8 +1288,8 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     struct DWASample {
         double v;
         double omega;
-        double cost;
-        double goal_cost;
+        double total_cost;
+        double lookahead_cost;
         double away_cost;
         double path_cost;
     };
@@ -1324,7 +1327,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 v_sample, 
                 omega_sample, 
                 total_cost,
-                goal_distance_bias_ * goal_dist_cost,
+                goal_distance_bias_ * lookahead_cost,
                 away_bias_ * away_cost,
                 path_distance_bias_ * path_cost
             });
@@ -1443,7 +1446,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
         ss << std::fixed << std::setprecision(3) 
            << std::setw(7) << sample.v << " | " 
            << std::setw(7) << sample.omega << " | "
-           << std::setw(9) << sample.goal_cost << " | " 
+           << std::setw(9) << sample.lookahead_cost << " | " 
            << std::setw(9) << sample.away_cost << " | " 
            << std::setw(9) << sample.path_cost << " | " 
            << std::setw(10);

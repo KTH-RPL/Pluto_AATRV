@@ -175,7 +175,19 @@ class DWAController:
         resolution = self.occ_grid.info.resolution
         
         mx1 = int((rel_x - origin_x) / resolution)
-        my2 = int((rel_y - origin_y) / resolution)
+        my1 = int((rel_y - origin_y) / resolution)
+
+        try:
+            # Get the single transform from world frame to the costmap's frame
+            transform = self.tf_buffer.lookup_transform(
+                self.occ_grid.header.frame_id, # Target frame (e.g., 'base_link')
+                self.world_frame,              # Source frame (e.g., 'odom')
+                rospy.Time(0),                 # Get the latest available transform
+                rospy.Duration(0.1)            # Timeout
+            )
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn_throttle(1.0, f"TF transform error in DWA: {e}")
+            return float('inf') # Return a high cost if transform fails
 
         p_world = PointStamped()
         p_world.header.frame_id = self.world_frame
@@ -185,7 +197,7 @@ class DWAController:
         
         mx, my = self.point_in_costmap_frame_to_map_indices(p_costmap_frame.point.x, p_costmap_frame.point.y)
 
-        print(f"MX MY 1: {mx1,my1} || MX MY 2: {mx,my} ")
+        # print(f"MX MY 1: {mx1,my1} || MX MY 2: {mx,my} ")
         
         valid = (0 <= mx < self.occ_grid.info.width and 0 <= my < self.occ_grid.info.height)
         return mx, my, valid

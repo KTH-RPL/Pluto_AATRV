@@ -204,3 +204,10 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+catkin_install_python(PROGRAMS
+  src/scripts/detector.py
+  src/scripts/costmap.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+

@@ -45,7 +45,7 @@ class DWAController:
         # Load DWA parameters from ROS parameter server
         self.predict_time = rospy.get_param('dwa_controller/predict_time', 2.0)
         self.path_distance_bias = rospy.get_param('dwa_controller/path_distance_bias', 0.0)
-        self.heading_bias = rospy.get_param('dwa_controller/heading_bias', 25.0)
+        self.heading_bias = rospy.get_param('dwa_controller/heading_bias', 1.0)
         self.goal_distance_bias = rospy.get_param('dwa_controller/goal_distance_bias', 0.5)
         self.occdist_scale = rospy.get_param('dwa_controller/occdist_scale', 10.0)
         self.speed_ref_bias = rospy.get_param('dwa_controller/speed_ref_bias', 0.005)
@@ -247,6 +247,7 @@ class DWAController:
         v_range = np.linspace(v_min, v_max, self.vx_samples)
         omega_range = np.linspace(omega_min, omega_max, self.omega_samples)
 
+        iprint = 0
         for v_sample in v_range:
             for omega_sample in omega_range:
                 self.traj_list = self.calc_trajectory(state.x, state.y, state.theta, v_sample, omega_sample)
@@ -266,13 +267,17 @@ class DWAController:
                               self.speed_ref_bias * speed_ref_cost +
                               self.away_bias * away_cost)
                             
-                # print(f"T {total_cost:.2f} || "
-                #     f"CTE {self.path_distance_bias * crosstrack_cost:.2f}  | "
-                #     f"H {self.heading_bias * heading_cost:.2f}  | "
-                #     f"LA {self.goal_distance_bias * lookahead_cost:.2f}  | "
-                #     f"OC {self.occdist_scale * obs_cost:.2f}  | "
-                #     f"SR {self.speed_ref_bias * speed_ref_cost:.2f}  | "
-                #     f"AB {self.away_bias * away_cost:.2f}")
+                
+                iprint += 1
+                if iprint == 500:
+                    print(f"T {total_cost:.2f} || "
+                        f"CTE {self.path_distance_bias * crosstrack_cost:.2f}  | "
+                        f"H {self.heading_bias * heading_cost:.2f}  | "
+                        f"LA {self.goal_distance_bias * lookahead_cost:.2f}  | "
+                        f"OC {self.occdist_scale * obs_cost:.2f}  | "
+                        f"SR {self.speed_ref_bias * speed_ref_cost:.2f}  | "
+                        f"AB {self.away_bias * away_cost:.2f}")
+                    iprint = 0
                 
                 # if obs_cost > max_obstacle_cost:
                 #     max_obstacle_cost = obs_cost
