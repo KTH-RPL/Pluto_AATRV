@@ -82,7 +82,10 @@ class RobotPosePublisher:
 
     def orientation_callback(self, msg):
         yaw_rad = np.deg2rad(msg.yaw)
-        self.raw_ins_yaw_rad = np.arctan2(np.sin(yaw_rad), np.cos(yaw_rad))
+        # --- FIX --- Negate the yaw value here to correct for a flipped IMU convention.
+        # This ensures all subsequent calculations use the standard ROS sign convention
+        # (counter-clockwise positive).
+        self.raw_ins_yaw_rad = -np.arctan2(np.sin(yaw_rad), np.cos(yaw_rad))
 
     def get_current_local_pose(self):
         """Calculates and returns the robot's pose in the local odom frame."""
