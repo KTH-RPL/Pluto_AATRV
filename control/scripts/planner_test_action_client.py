@@ -10,6 +10,9 @@ from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal
 import gmap_utility
 import matplotlib.pyplot as plt
 
+
+path_pub_ = rospy.Publisher("global_path", Path, queue_size=1, latch=True)
+
 def feedback_callback(feedback):
     rospy.loginfo("Received feedback: Path segment with %d poses has been planned.", len(feedback.current_segment.poses))
     try: 
@@ -22,6 +25,15 @@ def done_callback(status, result):
     if status == actionlib.GoalStatus.SUCCEEDED:
         rospy.loginfo("Action finished successfully!")
         rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
+
+         # Publish the received path to the 'global_path' topic
+        if result.global_plan.poses:
+            # The 'result.global_plan' is already a nav_msgs/Path message, so we can publish it directly.
+            path_pub_.publish(result.global_plan)
+            rospy.loginfo("Published the final path to 'global_path'.")
+        else:
+            rospy.logwarn("Received an empty final path. Not publishing.")
+            
         try: 
             plt.close('all')
         except:
