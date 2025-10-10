@@ -3,6 +3,7 @@ import numpy as np
 import open3d as o3d
 from shapely.geometry import Polygon, Point
 import os
+from geometry_msgs.msg import PoseStamped
 
 class PolygonMap:
     def __init__(self, boundary_ply, obstacle_ply_list):
@@ -49,6 +50,11 @@ class PolygonMap:
         return True, "Trajectory is safe"
 
     def visualize(self, trajectory=None, radius=None):
+
+        if isinstance(trajectory[0], PoseStamped):
+            points_list = [(p.pose.position.x, p.pose.position.y) for p in trajectory]
+            trajectory = points_list
+
         fig, ax = plt.subplots(figsize=(8, 8))
 
         # Plot boundary
