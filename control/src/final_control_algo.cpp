@@ -205,7 +205,7 @@ void PreviewController::global_path_callback(const nav_msgs::Path::ConstPtr& msg
     initialize_dwa_controller();
 
     // Publish the new path for visualization
-    // publish_path();
+    publish_path();
 }
 
 void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg) {

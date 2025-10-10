@@ -84,6 +84,10 @@ class LivePlot:
         if self.robot_pose:
             x = self.robot_pose.pose.position.x
             y = self.robot_pose.pose.position.y
+
+            # TO REMOVE: SIMULATE INITIAL ROBOT POSE
+            x, y = (138, 82) 
+            
             self.robot_poses_x.append(x)
             self.robot_poses_y.append(y)
             yaw = self.robot_pose.pose.orientation.z

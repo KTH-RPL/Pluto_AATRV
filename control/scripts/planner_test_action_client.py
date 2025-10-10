@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import actionlib
@@ -7,7 +7,7 @@ from nav_msgs.msg import Path
 
 from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal
 
-import gmap_utility
+from utils import gmap_utility
 import matplotlib.pyplot as plt
 
 
@@ -19,7 +19,7 @@ def feedback_callback(feedback):
         plt.close('all')
     except:
         pass
-    gmap_utility.polygon_map.visualize(feedback.current_segment.poses)
+    # gmap_utility.polygon_map.visualize(feedback.current_segment.poses)
 
 def done_callback(status, result):
     if status == actionlib.GoalStatus.SUCCEEDED:
@@ -38,7 +38,7 @@ def done_callback(status, result):
             plt.close('all')
         except:
             pass
-        gmap_utility.polygon_map.visualize(result.global_plan.poses)
+        # gmap_utility.polygon_map.visualize(result.global_plan.poses)
     elif status == actionlib.GoalStatus.PREEMPTED:
         rospy.logwarn("Action was preempted by a new goal.")
     else:

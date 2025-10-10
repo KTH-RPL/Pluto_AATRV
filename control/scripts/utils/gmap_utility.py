@@ -108,7 +108,7 @@ if __name__ == "__main__":
     # Visualize the map with trajectory
     polygon_map.visualize(trajectory=trajectory, radius=robot_radius)
 else:
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     folder = os.path.join(repo_root,"milestone2_gmap_dataset")
     boundary_file = os.path.join(folder, "final_boundary_comb.ply")
     obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]

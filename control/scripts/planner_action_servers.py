@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import actionlib
@@ -58,6 +58,10 @@ class GlobalPlannerActionServer:
         
         # Find the nearest waypoint to the current robot pose
         robot_pos = CURRENT_ROBOT_POSE.pose.position
+
+        # TO REMOVE: SIMULATE INITIAL ROBOT POSE
+        robot_pos.x, robot_pos.y = (138, 82)
+
         waypoints = goal.waypoints.poses
         min_dist_sq = float('inf')
         start_index = 0

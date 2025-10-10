@@ -1,6 +1,6 @@
 preview_controller:
   # Path generation
-  path_type: "straight"                 # OPTIONS: "snake" or "straight" or "global"
+  path_type: "global"                 # OPTIONS: "snake" or "straight" or "global"
   global_path_topic: "/global_path"
   amplitude: 4.0
   wavelength: 6.0

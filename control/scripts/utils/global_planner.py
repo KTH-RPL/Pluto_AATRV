@@ -7,7 +7,7 @@ Assumptions:
 2. Robot position defined by the center of the circle
 """
 
-import gmap_utility
+import utils.gmap_utility
 import numpy as np
 import math
 # import rospy
@@ -21,7 +21,7 @@ from scipy.spatial import KDTree
 import argparse
 parser = argparse.ArgumentParser(description="Local Planner for Pluto")
 parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose mode")
-args = parser.parse_args()
+args, unknown = parser.parse_known_args()
 verbose_g = False
 if args.verbose:
     verbose_g = True
@@ -661,7 +661,7 @@ def execute_global_planning(start, goal, sim_plan=False, sim_obstacles=None, ver
         # folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), folder)
         # boundary_file = os.path.join(folder, "final_boundary_comb.ply")
         # obstacle_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith("obst")]
-        polygon_map = gmap_utility.polygon_map
+        polygon_map = utils.gmap_utility.polygon_map
 
         def check_node_valid(node, robot_radius=robot_radius):
             node = node[:2]
