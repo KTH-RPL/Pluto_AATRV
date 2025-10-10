@@ -11,9 +11,7 @@ class RobotPosePublisher:
     def __init__(self):
         """
         Initializes the node, subscribers, and publisher.
-        This node correctly fuses odometry and IMU data by rotating the total
-        odometry displacement by the initial IMU yaw to create a clean local frame.
-        It then aligns this local frame to the global map frame upon receiving a path.
+        This node correctly performs dead reckoning and aligns to a global path.
         """
         rospy.init_node('robot_pose_publisher')
 
@@ -24,22 +22,22 @@ class RobotPosePublisher:
         self.robot_pos_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
 
         # --- State Variables ---
-        self.raw_odom_x = None
-        self.raw_odom_y = None
-        self.raw_ins_yaw_rad = None
-        
-        # Store the initial sensor readings to define the origin of the local frame
-        self.initial_odom_x = 0.0
-        self.initial_odom_y = 0.0
-        self.initial_ins_yaw = 0.0
+        # Current integrated pose in the local "odom" frame
+        self.pose_x = 0.0
+        self.pose_y = 0.0
+        self.pose_yaw = 0.0
 
+        # Store the last sensor readings to calculate deltas (changes)
+        self.last_odom_x = 0.0
+        self.last_odom_y = 0.0
+        self.last_ins_yaw = 0.0
+        
         # This static transform takes points from our local 'odom' frame to the global 'map' frame
-        self.odom_to_map_trans_x = 0.0
-        self.odom_to_map_trans_y = 0.0
-        self.odom_to_map_rot_yaw = 0.0
+        self.map_transform = None
 
         # State flags
-        self.local_pose_initialized = False
+        self.odom_initialized = False
+        self.imu_initialized = False
         self.is_globally_aligned = False
 
         rospy.loginfo("Robot Pose Publisher initialized. Waiting for sensor data...")
@@ -47,10 +45,10 @@ class RobotPosePublisher:
     def path_callback(self, msg):
         """
         When the first global path is received, this calculates the static transform
-        (translation and rotation) between the robot's current local 'odom' frame
-        and the global 'map' frame.
+        (translation and rotation) required to align the local 'odom' frame with the
+        global 'map' frame.
         """
-        if self.is_globally_aligned or not msg.poses or not self.local_pose_initialized:
+        if self.is_globally_aligned or not msg.poses or not (self.odom_initialized and self.imu_initialized):
             return
 
         # Get the target starting pose from the global path in the 'map' frame
@@ -60,103 +58,110 @@ class RobotPosePublisher:
         q = path_start_pose.pose.orientation
         (_, _, target_map_yaw) = euler_from_quaternion([q.x, q.y, q.z, q.w])
 
-        # Get the robot's current pose in the 'odom' frame
-        current_odom_x, current_odom_y, current_odom_yaw = self.get_current_local_pose()
-
-        # Calculate the rotational part of the transform
-        self.odom_to_map_rot_yaw = target_map_yaw - current_odom_yaw
+        # Calculate the rotational offset
+        rotation_offset = target_map_yaw - self.pose_yaw
         
-        # --- FIX --- This is the corrected calculation for the translational offset
-        # The translation is the difference between the map target and the rotated odom pose.
-        cos_rot = np.cos(self.odom_to_map_rot_yaw)
-        sin_rot = np.sin(self.odom_to_map_rot_yaw)
-        self.odom_to_map_trans_x = target_map_x - (current_odom_x * cos_rot - current_odom_y * sin_rot)
-        self.odom_to_map_trans_y = target_map_y - (current_odom_x * sin_rot + current_odom_y * cos_rot)
+        # Calculate the translational offset
+        cos_rot = np.cos(rotation_offset)
+        sin_rot = np.sin(rotation_offset)
+        translation_x = target_map_x - (self.pose_x * cos_rot - self.pose_y * sin_rot)
+        translation_y = target_map_y - (self.pose_x * sin_rot + self.pose_y * cos_rot)
+
+        # Store the complete transform
+        self.map_transform = {
+            'x': translation_x,
+            'y': translation_y,
+            'yaw': rotation_offset
+        }
 
         self.is_globally_aligned = True
         rospy.loginfo("Global path received! Aligned to map frame.")
 
     def odom_callback(self, msg):
-        self.raw_odom_x = msg.pose.pose.position.x
-        self.raw_odom_y = msg.pose.pose.position.y
+        current_odom_x = msg.pose.pose.position.x
+        current_odom_y = msg.pose.pose.position.y
+
+        if not self.odom_initialized:
+            self.last_odom_x = current_odom_x
+            self.last_odom_y = current_odom_y
+            self.odom_initialized = True
+            return
+
+        # Calculate displacement in the robot's own moving frame
+        delta_x_robot = current_odom_x - self.last_odom_x
+        delta_y_robot = current_odom_y - self.last_odom_y
+
+        # Rotate displacement into the world frame (using the robot's current yaw)
+        delta_x_world = delta_x_robot * np.cos(self.pose_yaw) - delta_y_robot * np.sin(self.pose_yaw)
+        delta_y_world = delta_x_robot * np.sin(self.pose_yaw) + delta_y_robot * np.cos(self.pose_yaw)
+
+        # Integrate to update the pose
+        self.pose_x += delta_x_world
+        self.pose_y += delta_y_world
+
+        # Update last known values for the next iteration
+        self.last_odom_x = current_odom_x
+        self.last_odom_y = current_odom_y
+        
+        self.publish_robot_pose()
 
     def orientation_callback(self, msg):
-        yaw_rad = np.deg2rad(msg.yaw)
-        # Negate the yaw value here to correct for a flipped IMU convention.
-        self.raw_ins_yaw_rad = -np.arctan2(np.sin(yaw_rad), np.cos(yaw_rad))
+        # Convert yaw from degrees [0, 360) to radians [-pi, pi]
+        current_yaw_rad = np.deg2rad(msg.yaw)
+        current_yaw_rad = np.arctan2(np.sin(current_yaw_rad), np.cos(current_yaw_rad))
 
-    def get_current_local_pose(self):
-        """Calculates and returns the robot's pose in the local odom frame."""
-        # Calculate displacement in the raw odom frame
-        delta_x_raw_odom = self.raw_odom_x - self.initial_odom_x
-        delta_y_raw_odom = self.raw_odom_y - self.initial_odom_y
-
-        # Rotate the displacement vector backwards by the initial yaw.
-        # This aligns the movement to our local frame where the robot started at yaw=0.
-        cos_initial = np.cos(-self.initial_ins_yaw)
-        sin_initial = np.sin(-self.initial_ins_yaw)
+        if not self.imu_initialized:
+            self.last_ins_yaw = current_yaw_rad
+            self.imu_initialized = True
+            return
         
-        local_x = delta_x_raw_odom * cos_initial - delta_y_raw_odom * sin_initial
-        local_y = delta_x_raw_odom * sin_initial + delta_y_raw_odom * cos_initial
-
-        # The local yaw is just the change from the initial yaw
-        local_yaw = self.raw_ins_yaw_rad - self.initial_ins_yaw
+        # Calculate change in yaw and update the pose
+        # This simple subtraction works because we update frequently
+        delta_yaw = current_yaw_rad - self.last_ins_yaw
+        self.pose_yaw += delta_yaw
         
-        return local_x, local_y, local_yaw
-
-    def process_and_publish_pose(self):
-        if self.raw_odom_x is None or self.raw_ins_yaw_rad is None:
-            rospy.loginfo_throttle(5, "Waiting for initial odometry and INS messages...")
+        # Normalize the final yaw
+        self.pose_yaw = -np.arctan2(np.sin(self.pose_yaw), np.cos(self.pose_yaw))
+        
+        self.last_ins_yaw = current_yaw_rad
+        
+    def publish_robot_pose(self):
+        # Only publish if we have initialized data
+        if not (self.odom_initialized and self.imu_initialized):
             return
 
-        if not self.local_pose_initialized:
-            # Initialize the local frame by capturing the first sensor readings.
-            self.initial_odom_x = self.raw_odom_x
-            self.initial_odom_y = self.raw_odom_y
-            self.initial_ins_yaw = self.raw_ins_yaw_rad
-            self.local_pose_initialized = True
-            rospy.loginfo("Initial local pose captured. Publishing in 'odom' frame.")
-            return
-
-        # --- Pose Calculation ---
-        # 1. Get the robot's current pose in its local odom frame
-        local_x, local_y, local_yaw = self.get_current_local_pose()
-
-        final_x, final_y, final_yaw = local_x, local_y, local_yaw
+        final_x, final_y, final_yaw = self.pose_x, self.pose_y, self.pose_yaw
         frame_id = "odom"
 
-        # 2. If aligned, transform the local pose to the global map frame
+        # If aligned, transform the local pose to the global map frame
         if self.is_globally_aligned:
-            cos_theta = np.cos(self.odom_to_map_rot_yaw)
-            sin_theta = np.sin(self.odom_to_map_rot_yaw)
+            cos_rot = np.cos(self.map_transform['yaw'])
+            sin_rot = np.sin(self.map_transform['yaw'])
             
-            final_x = local_x * cos_theta - local_y * sin_theta + self.odom_to_map_trans_x
-            final_y = local_x * sin_theta + local_y * cos_theta + self.odom_to_map_trans_y
-            final_yaw = local_yaw + self.odom_to_map_rot_yaw
+            final_x = self.pose_x * cos_rot - self.pose_y * sin_rot + self.map_transform['x']
+            final_y = self.pose_x * sin_rot + self.pose_y * cos_rot + self.map_transform['y']
+            final_yaw = self.pose_yaw + self.map_transform['yaw']
             frame_id = "map"
-
-        # Normalize the final yaw angle
+        
+        # Normalize the final yaw one last time
         final_yaw = np.arctan2(np.sin(final_yaw), np.cos(final_yaw))
         
-        # --- Publishing ---
+        # --- Create and Publish Message ---
         pose = PoseStamped()
         pose.header.stamp = rospy.Time.now()
         pose.header.frame_id = frame_id
         pose.pose.position.x = final_x
         pose.pose.position.y = final_y
         
-        pose.pose.orientation.z = np.sin(final_yaw / 2.0)
-        pose.pose.orientation.w = np.cos(final_yaw / 2.0)
+        # Convert final yaw to quaternion for the message
+        pose.pose.orientation.z = final_yaw
         
         self.robot_pos_pub.publish(pose)
 
 if __name__ == '__main__':
     try:
         robot_pose_publisher = RobotPosePublisher()
-        rate = rospy.Rate(50)  # 50 Hz
-        while not rospy.is_shutdown():
-            robot_pose_publisher.process_and_publish_pose()
-            rate.sleep()
+        rospy.spin()  # Event-based, no need for a while loop
     except rospy.ROSInterruptException:
         rospy.loginfo("Robot Pose Publisher node shut down.")
 
