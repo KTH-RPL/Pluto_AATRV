@@ -77,25 +77,22 @@ class LivePlot:
             gx = self.goal_pose.pose.position.x
             gy = self.goal_pose.pose.position.y
             self.ax_map.plot(gx, gy, 'ro', label='Goal')
-            self.all_x.append(gx)
-            self.all_y.append(gy)
+            # self.all_x.append(gx)
+            # self.all_y.append(gy)
 
         # Plot robot pose
         if self.robot_pose:
             x = self.robot_pose.pose.position.x
             y = self.robot_pose.pose.position.y
 
-            # TO REMOVE: SIMULATE INITIAL ROBOT POSE
-            x, y = (138, 82) 
-            
             self.robot_poses_x.append(x)
             self.robot_poses_y.append(y)
             yaw = self.robot_pose.pose.orientation.z
             dx = np.cos(yaw)
             dy = np.sin(yaw)
             self.ax_map.arrow(x, y, dx, dy, head_width=1, color='g', label='Robot')
-            self.all_x.append(x)
-            self.all_y.append(y)
+            self.all_x = [x]
+            self.all_y = [y]
             self.ax_map.plot(self.robot_poses_x, self.robot_poses_y, "m+")
 
         
