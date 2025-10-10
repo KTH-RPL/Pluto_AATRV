@@ -83,6 +83,9 @@ class PreviewController {
         void robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
     private:
+        ros::Subscriber global_path_sub_;
+        void global_path_callback(const nav_msgs::Path::ConstPtr& msg);
+        std::string global_path_topic;
         // (Most private members are unchanged)
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);

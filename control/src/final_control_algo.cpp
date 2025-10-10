@@ -11,14 +11,14 @@
 #include <cmath>
 #include <sstream> // For std::stringstream
 #include <iomanip> // For std::fixed, std::setprecision
-
-// Added for DWA trajectory visualization
-#include <visualization_msgs/MarkerArray.h> 
+#include <visualization_msgs/MarkerArray.h> // Added for DWA trajectory visualization
+#include <nav_msgs/Path.h>
 
 PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
       prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0),
-      initial_pose_received_(false), path_generated_(false), initial_alignment_(false)
+      initial_pose_received_(false), path_generated_(false), initial_alignment_(false),
+      dwa_controller_ptr(nullptr)
 {
     robot_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/atrv/cmd_vel", 10);
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
@@ -120,6 +120,15 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     // Initialize controller mode to DWA by default, matches visualiser default
     active_controller_ = "DWA";
+
+    // Initialize global path subscriber if path_type is "global"
+    if (path_type_ == "global") {
+        nh_.param<std::string>("preview_controller/global_path_topic", global_path_topic, "/global_path");
+        global_path_sub_ = nh_.subscribe(global_path_topic, 1, &PreviewController::global_path_callback, this);
+        ROS_INFO("Controller configured to use external path from /global_path topic.");
+    } else {
+        ROS_INFO("Controller configured for internal path generation (type: '%s').", path_type_.c_str());
+    }
 }
 
 void PreviewController::stop_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
@@ -135,42 +144,112 @@ void PreviewController::start_moving_callback(const std_msgs::Bool::ConstPtr& ms
     }
 }
 
+// Callback for the external global path
+void PreviewController::global_path_callback(const nav_msgs::Path::ConstPtr& msg) {
+    ROS_INFO("Received a new global path with %zu poses.", msg->poses.size());
+
+    // --- Safety Check 1: Empty path ---
+    if (msg->poses.empty()) {
+        ROS_WARN("Received an empty path. Ignoring.");
+        return;
+    }
+
+    // // --- Safety Check 2: Path too short ---
+    // if (msg->poses.size() < 2) {
+    //     ROS_WARN("Received a path with only one pose. A valid path needs at least 2 poses. Ignoring.");
+    //     return;
+    // }
+
+    // Stop the robot for safety before switching paths
+    ROS_INFO("Switching to new path. Stopping robot for safety.");
+    stop_robot();
+
+    // Clear the old path and state variables
+    current_path.clear();
+    std::vector<Waypoint> new_path;
+    new_path.reserve(msg->poses.size());
+
+    // Convert nav_msgs::Path to internal Waypoint format, storing only x and y initially.
+    for (const auto& pose_stamped : msg->poses) {
+        new_path.emplace_back(pose_stamped.pose.position.x, pose_stamped.pose.position.y, 0.0); // Use 0.0 as a placeholder for theta
+    }
+
+    // Calculate theta for each waypoint based on the direction to the next one.
+    // This makes the controller robust to paths published without orientation.
+    for (size_t i = 0; i < new_path.size() - 1; ++i) {
+        double dx = new_path[i + 1].x - new_path[i].x;
+        double dy = new_path[i + 1].y - new_path[i].y;
+        new_path[i].theta = std::atan2(dy, dx);
+    }
+    // The orientation of the last point is the same as the second-to-last point.
+    new_path.back().theta = new_path[new_path.size() - 2].theta;
+
+
+    // Atomically update controller state with the new path
+    current_path = new_path;
+    max_path_points = current_path.size();
+    targetid = 0; // Reset target to the beginning of the new path
+    path_generated_ = true; // Mark that a valid path is now available
+    initial_alignment_ = false; // Force re-alignment to the new path's start
+
+    ROS_INFO("Path updated successfully. Resetting controller state and re-initializing DWA.");
+
+    // Re-calculate curvatures for the new path
+    calculate_all_curvatures();
+
+    // Re-initialize the DWA controller with the new path
+    if (dwa_controller_ptr) {
+        delete dwa_controller_ptr;
+        dwa_controller_ptr = nullptr;
+    }
+    initialize_dwa_controller();
+
+    // Publish the new path for visualization
+    // publish_path();
+}
+
 void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
     current_pose = *msg;
     robot_x = current_pose.pose.position.x;
     robot_y = current_pose.pose.position.y;
     robot_theta = current_pose.pose.orientation.z;
-    
+
     // Safety check for NaN values in pose
     if (std::isnan(robot_x) || std::isnan(robot_y) || std::isnan(robot_theta)) {
         ROS_ERROR("NaN detected in robot pose! x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
         return; // Skip this message
     }
-    
-    // --- MODIFIED --- Generate path on first pose received based on path_type_ parameter
+
+    // --- MODIFIED --- Generate path only if not using an external path
     if (!initial_pose_received_) {
         initial_pose_received_ = true;
         ROS_INFO("Initial robot pose received: x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
 
-        if (path_type_ == "snake") {
-            ROS_INFO("Path type set to 'snake'. Generating snake path...");
-            generate_snake_path(robot_x, robot_y, robot_theta);
-        } else if (path_type_ == "straight") {
-            ROS_INFO("Path type set to 'straight'. Generating straight line path...");
-            generate_straight_path(robot_x, robot_y, robot_theta);
-        } else {
-            ROS_ERROR("Invalid path_type '%s'. Defaulting to snake path.", path_type_.c_str());
-            generate_snake_path(robot_x, robot_y, robot_theta);
-        }
+        if (path_type_ != "global") {
+            // Internal path generation logic
+            if (path_type_ == "snake") {
+                ROS_INFO("Path type set to 'snake'. Generating snake path...");
+                generate_snake_path(robot_x, robot_y, robot_theta);
+            } else if (path_type_ == "straight") {
+                ROS_INFO("Path type set to 'straight'. Generating straight line path...");
+                generate_straight_path(robot_x, robot_y, robot_theta);
+            } else {
+                ROS_ERROR("Invalid path_type '%s'. Defaulting to snake path.", path_type_.c_str());
+                generate_snake_path(robot_x, robot_y, robot_theta);
+            }
 
-        initialize_dwa_controller();
-        path_generated_ = true;
-        calculate_all_curvatures(); // Precompute curvatures for all path points
-        publish_path();  // Publish the generated path
+            initialize_dwa_controller();
+            path_generated_ = true;
+            calculate_all_curvatures();
+            publish_path();
+        } else {
+            // path_type_ is "global", so we are waiting for the path callback
+            ROS_INFO("Waiting for an external path on /planned_path topic...");
+        }
     }
 
-    if (initial_pose_received_) {
-        publish_path();  
+    if (path_generated_) { // Continuously publish the path for visualization
+        publish_path();
     }
 }
 
