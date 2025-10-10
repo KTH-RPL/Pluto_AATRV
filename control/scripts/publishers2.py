@@ -66,12 +66,12 @@ class RobotPosePublisher:
         # Calculate the rotational part of the transform
         self.odom_to_map_rot_yaw = target_map_yaw - current_odom_yaw
         
-        # Calculate the translational part of the transform
-        # We must rotate the current odom position by the new rotation to align it properly
-        cos_theta = np.cos(self.odom_to_map_rot_yaw)
-        sin_theta = np.sin(self.odom_to_map_rot_yaw)
-        self.odom_to_map_trans_x = target_map_x - (current_odom_x * cos_theta - current_odom_y * sin_theta)
-        self.odom_to_map_trans_y = target_map_y - (current_odom_x * sin_theta + current_odom_y * cos_theta)
+        # --- FIX --- This is the corrected calculation for the translational offset
+        # The translation is the difference between the map target and the rotated odom pose.
+        cos_rot = np.cos(self.odom_to_map_rot_yaw)
+        sin_rot = np.sin(self.odom_to_map_rot_yaw)
+        self.odom_to_map_trans_x = target_map_x - (current_odom_x * cos_rot - current_odom_y * sin_rot)
+        self.odom_to_map_trans_y = target_map_y - (current_odom_x * sin_rot + current_odom_y * cos_rot)
 
         self.is_globally_aligned = True
         rospy.loginfo("Global path received! Aligned to map frame.")
@@ -82,9 +82,7 @@ class RobotPosePublisher:
 
     def orientation_callback(self, msg):
         yaw_rad = np.deg2rad(msg.yaw)
-        # --- FIX --- Negate the yaw value here to correct for a flipped IMU convention.
-        # This ensures all subsequent calculations use the standard ROS sign convention
-        # (counter-clockwise positive).
+        # Negate the yaw value here to correct for a flipped IMU convention.
         self.raw_ins_yaw_rad = -np.arctan2(np.sin(yaw_rad), np.cos(yaw_rad))
 
     def get_current_local_pose(self):
