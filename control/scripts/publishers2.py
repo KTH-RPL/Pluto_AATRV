@@ -132,10 +132,8 @@ class RobotPosePublisher:
         pose.header.frame_id = frame_id
         pose.pose.position.x = final_x
         pose.pose.position.y = final_y
-        
-        pose.pose.orientation.z = np.sin(final_yaw / 2.0)
-        pose.pose.orientation.w = np.cos(final_yaw / 2.0)
-        
+        pose.pose.orientation.z = final_yaw
+
         self.robot_pos_pub.publish(pose)
 
 if __name__ == '__main__':
