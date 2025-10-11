@@ -60,7 +60,7 @@ class GlobalPlannerActionServer:
         robot_pos = CURRENT_ROBOT_POSE.pose.position
 
         # TO REMOVE: SIMULATE INITIAL ROBOT POSE
-        robot_pos.x, robot_pos.y = (138, 82)
+        robot_pos.x, robot_pos.y = (147.096863, 79.56179)
 
         waypoints = goal.waypoints.poses
         min_dist_sq = float('inf')

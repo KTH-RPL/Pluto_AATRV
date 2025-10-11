@@ -236,6 +236,7 @@ class global_path_client(pt.behaviour.Behaviour):
         self.client = actionlib.SimpleActionClient("plan_global_path", PlanGlobalPathAction)
         self.sent = False        
         self.c_goal = c_goal
+        self.path_pub_ = rospy.Publisher("global_path", Path, queue_size=1, latch=True)
 
     def initialise(self):
         self.sent = False
@@ -250,21 +251,43 @@ class global_path_client(pt.behaviour.Behaviour):
                 "Received feedback: Path segment with %d poses has been planned.",
                 len(feedback.current_segment.poses)
             )
-            plt.close('all')
-            gmap_utility.polygon_map.visualize(feedback.current_segment.poses)
+            # try: 
+            #     plt.close('all')
+            # except:
+            #     pass
+            # gmap_utility.polygon_map.visualize(feedback.current_segment.poses)
 
-        except Exception as e:
-            rospy.logwarn("Feedback callback failed: %s", str(e))
+            # !!TO EVALUATE!!
+            # Publish the intermediate path to the 'global_path' topic
+            ## This would reduce init time of the robot (not waiting for the whole global plan)
+            ## But need to do some changes in final_control_algo.cpp to able receiving segments
+            # if feedback.global_plan.poses:
+            #     self.path_pub_.publish(feedback.global_plan)
+            #     rospy.loginfo("Published the intermediate path to 'global_path'.")
+            # else:
+            #     rospy.logwarn("Received an empty intermediate path. Not publishing.")
+
+            except Exception as e:
+                rospy.logwarn("Feedback callback failed: %s", str(e))
 
     def done_callback(self, status, result):
         if status == actionlib.GoalStatus.SUCCEEDED:
             rospy.loginfo("Action finished successfully!")
             rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
-            try:
-                plt.close('all')
-                gmap_utility.polygon_map.visualize(result.global_plan.poses)
-            except Exception as e:
-                rospy.logwarn("Visualization failed in done_callback: %s", str(e))
+
+            # Publish the received path to the 'global_path' topic
+            if result.global_plan.poses:
+                # The 'result.global_plan' is already a nav_msgs/Path message, so we can publish it directly.
+                self.path_pub_.publish(result.global_plan)
+                rospy.loginfo("Published the final path to 'global_path'.")
+            else:
+                rospy.logwarn("Received an empty final path. Not publishing.")
+
+            # try:
+            #     plt.close('all')
+            #     gmap_utility.polygon_map.visualize(result.global_plan.poses)
+            # except Exception as e:
+            #     rospy.logwarn("Visualization failed in done_callback: %s", str(e))
         elif status == actionlib.GoalStatus.PREEMPTED:
             rospy.logwarn("Action was preempted by a new goal.")
         else:
