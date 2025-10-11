@@ -2,10 +2,76 @@
 
 import rospy
 import numpy as np
+from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from vectornav.msg import Ins
 
+# TOGGLE FOR PUBLISHERS
+publish_pose = True         # Publish Robot Pose (Based on Odom for x y and IMU for yaw)
+publish_waypoint = True     # Publish Waypoint Goals for Global Planner
+
+# ------------------------------------------------------------------------
+# Waypoint Publisher for Global Planner
+class WaypointPublisher:
+    def __init__(self):
+        # Create a publisher for the "/waypoints" topic with message type Path
+        self.path_publisher = rospy.Publisher('/waypoints', Path, queue_size=10, latch=True)
+
+        # The list of waypoint coordinates (x, y)
+        self.waypoints_coords = [
+            (120, 65),
+            (119.5, 56),
+            (140, 30),
+            (190, 10),
+            (170, -50),
+            (145, -60),
+            (121, -105),
+            (100, -136),
+            (25, -110)
+        ]
+
+        # Create the Path message
+        self.path_msg = self.create_path_message()
+
+    def create_path_message(self):
+        """
+        Creates a nav_msgs/Path message from the list of waypoint coordinates.
+        """
+        path = Path()
+        # Set the frame ID for the path. This is important for visualization in RViz.
+        path.header.frame_id = "map"
+        path.header.stamp = rospy.Time.now()
+
+        for coord in self.waypoints_coords:
+            pose = PoseStamped()
+            # Set the timestamp for each pose
+            pose.header.stamp = rospy.Time.now()
+            # Set the frame ID for each pose
+            pose.header.frame_id = "map"
+
+            # Set the position (x, y, z). We assume z=0 for 2D navigation.
+            pose.pose.position.x = coord[0]
+            pose.pose.position.y = coord[1]
+            pose.pose.position.z = 0.0
+
+            # Set the orientation. A quaternion of (0,0,0,1) means no rotation.
+            pose.pose.orientation.x = 0.0
+            pose.pose.orientation.y = 0.0
+            pose.pose.orientation.z = 0.0
+            pose.pose.orientation.w = 0.0
+
+            path.poses.append(pose)
+
+        return path
+
+    def publish_waypoint(self):
+        if not self.path_msg:
+            self.path_msg = self.create_path_message()
+        self.path_publisher.publish(self.path_msg)
+
+# ------------------------------------------------------------------------        
+# Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
 class RobotPosePublisher:
     def __init__(self):
         self.odom_sub = rospy.Subscriber('/atrv/odom', Odometry, self.odom_callback)
@@ -66,10 +132,26 @@ class RobotPosePublisher:
         pose.pose.orientation.z = self.robot_yaw
         self.robot_pos_pub.publish(pose)
 
+
+# ------------------------------------------------------------------------
+# MAIN CALLER
 if __name__ == '__main__':
-    rospy.init_node('robot_pose_publisher1')
-    robot_pose_publisher = RobotPosePublisher()
+    # Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
+    if publish_pose:
+        rospy.init_node('robot_pose_publisher1')
+        robot_pose_publisher = RobotPosePublisher()
+
+    if publish_waypoint:
+        rospy.init_node('waypoint_publisher_node', anonymous=True)
+        waypoint_publisher = WaypointPublisher()
+        waypoint_publisher.publish_waypoint() # Publish it once?
+
+    # Periodical Publish
     rate = rospy.Rate(50)
     while not rospy.is_shutdown():
-        robot_pose_publisher.publish_robot_pose()
+        # Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
+        if publish_pose:
+            robot_pose_publisher.publish_robot_pose()
+
+
         rate.sleep()
