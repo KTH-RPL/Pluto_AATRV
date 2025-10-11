@@ -61,6 +61,6 @@
     <!-- ================================================================== -->
     <!-- RViz Visualization -->
     <!-- ================================================================== -->
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" required="true"/>
+    <node name="rviz_detector" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" required="true"/>
     
 </launch>
