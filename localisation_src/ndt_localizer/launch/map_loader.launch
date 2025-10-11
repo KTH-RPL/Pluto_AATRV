@@ -18,7 +18,7 @@
     <arg name="z" default="0.0" /> -->
 
     <!--- Run Rviz-->
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find ndt_localizer)/cfgs/rock-auto.rviz" />
+    <!--node pkg="rviz" type="rviz" name="rviz" args="-d $(find ndt_localizer)/cfgs/rock-auto.rviz" /-->
 
     <!--- MapLoader -->    
     <arg name="pcd_path"  default="$(find ndt_localizer)/map/KTH_prior_map_DS.pcd"/>
