@@ -1,0 +1,19 @@
+<launch>
+    <!-- Argument for just the bag name -->
+    <arg name="bag_name" default="ndt_debug.bag" />
+
+    <!-- Launch the ndt_localizer -->
+    <include file="$(find ndt_localizer)/launch/ndt_localizer.launch">
+    </include>
+
+    <!-- Run pub_initial_pose.py -->
+    <node pkg="odom_plotter" type="pub_initial_pose.py" name="pub_initial_pose" output="screen" />
+
+    <!-- Record rosbag in the home directory using the bag_name -->
+    <arg name="bag_prefix" default="/tmp/ndt_debug_data" />
+    <arg name="enable_recording" default="true" />
+    <node if="$(arg enable_recording)" pkg="rosbag" type="record" name="rosbag_recorder" 
+          args="-o $(arg bag_prefix) 
+                /transform_probability /exe_time_ms"
+          output="screen" />
+</launch>
