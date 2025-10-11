@@ -200,7 +200,7 @@ class goal_reached(pt.behaviour.Behaviour):
             return pt.common.Status.SUCCESS
         
         if not self.c_goal.goals or not self.c_goal.robot_pose:
-            rospy.logerr("Either goal is empty or not getting robot_pose")
+            rospy.logerr(f"Either goal is empty or not getting robot_pose:{self.c_goal.goals, self.c_goal.robot_pose}")
             return pt.common.Status.RUNNING
 
         final_goal = self.c_goal.goals.poses[-1].position
