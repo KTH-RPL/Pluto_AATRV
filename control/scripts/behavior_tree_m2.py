@@ -13,7 +13,7 @@ from std_msgs.msg import Float32
 from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal
 from robot_controller.srv import RunControl
 
-import gmap_utility
+# import gmap_utility
 import py_trees.display as display
 import matplotlib.pyplot as plt
 import json
@@ -196,6 +196,7 @@ class goal_reached(pt.behaviour.Behaviour):
 
     def update(self):
         if self.finished:
+            rospy.loginfo("[goal_reached] Final goal reached.")
             return pt.common.Status.SUCCESS
         
         if not self.c_goal.goals or not self.c_goal.robot_pose:
@@ -211,7 +212,7 @@ class goal_reached(pt.behaviour.Behaviour):
             rospy.loginfo("[goal_reached] Final goal reached.")
             self.finished = True
             return pt.common.Status.SUCCESS
-
+        rospy.loginfo("[goal_reached] final goal not reached yet.")
         return pt.common.Status.FAILURE
 
 
@@ -358,8 +359,8 @@ class global_path_client(pt.behaviour.Behaviour):
             # else:
             #     rospy.logwarn("Received an empty intermediate path. Not publishing.")
 
-            except Exception as e:
-                rospy.logwarn("Feedback callback failed: %s", str(e))
+        except Exception as e:
+            rospy.logwarn("Feedback callback failed: %s", str(e))
 
     def done_callback(self, status, result):
         if status == actionlib.GoalStatus.SUCCEEDED:
