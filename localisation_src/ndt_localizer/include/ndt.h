@@ -28,6 +28,10 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/transforms.h>
 
+#include <omp.h>
+#include <pclomp/ndt_omp.h>
+
+
 class NdtLocalizer{
 public:
 
@@ -48,7 +52,8 @@ private:
     ros::Publisher iteration_num_pub_;
     ros::Publisher diagnostics_pub_;
 
-    pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
+    //pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
+    pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
 
     tf2_ros::Buffer tf2_buffer_;
     tf2_ros::TransformListener tf2_listener_;
