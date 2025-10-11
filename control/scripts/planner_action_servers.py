@@ -115,18 +115,19 @@ class GlobalPlannerActionServer:
                 self._as.set_aborted(text=f"Exception during planning: {e}")
                 return
 
-            # 4. Publish Feedback
-            feedback = PlanGlobalPathFeedback()
-            feedback.current_segment = segment_path
-            self._as.publish_feedback(feedback)
-
-            # 5. Append segment to the full path and update the start for the next iteration
+            # 4. Append segment to the full path and update the start for the next iteration
             if full_path.poses:
                 full_path.poses.extend(segment_path.poses[1:]) # for goal 2 until last, no need to append start position to the full path
             else:
                 full_path.poses.extend(segment_path.poses)
             if segment_path.poses:
                 current_start_pose = segment_path.poses[-1]
+
+            # 5. Publish Feedback
+            feedback = PlanGlobalPathFeedback()
+            feedback.current_segment = segment_path
+            feedback.current_full_path = full_path
+            self._as.publish_feedback(feedback)
 
         # 6. Once all waypoints are processed, set the final result
         result = PlanGlobalPathResult()
