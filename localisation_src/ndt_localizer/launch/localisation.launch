@@ -2,6 +2,10 @@
     <!-- Argument for just the bag name -->
     <arg name="bag_name" default="ndt_debug.bag" />
 
+    <!-- Add ouster sensor luach file-->
+    <include file="$(find ouster_ros)/launch/sensor.launch">
+    </include>
+    
     <!-- Launch the ndt_localizer -->
     <include file="$(find ndt_localizer)/launch/ndt_localizer.launch">
     </include>

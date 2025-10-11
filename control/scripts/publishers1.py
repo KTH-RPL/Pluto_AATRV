@@ -8,7 +8,7 @@ from nav_msgs.msg import Odometry
 from vectornav.msg import Ins
 
 # TOGGLE FOR PUBLISHERS
-publish_pose = True         # Publish Robot Pose (Based on Odom for x y and IMU for yaw)
+publish_pose = False         # Publish Robot Pose (Based on Odom for x y and IMU for yaw)
 publish_waypoint = True     # Publish Waypoint Goals for Global Planner
 
 # ------------------------------------------------------------------------
