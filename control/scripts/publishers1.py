@@ -6,10 +6,13 @@ from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from vectornav.msg import Ins
+from tf.transformations import euler_from_quaternion
 
 # TOGGLE FOR PUBLISHERS
 publish_pose = False         # Publish Robot Pose (Based on Odom for x y and IMU for yaw)
 publish_waypoint = True     # Publish Waypoint Goals for Global Planner
+publish_ndt_pose_yaw = True         # Subscribe to NDT Pose and publish to Robot Pose (converting quarternion yaw into just z yaw)
+
 
 # ------------------------------------------------------------------------
 # Waypoint Publisher for Global Planner
@@ -132,6 +135,27 @@ class RobotPosePublisher:
         pose.pose.orientation.z = self.robot_yaw
         self.robot_pos_pub.publish(pose)
 
+# ------------------------------------------------------------------------        
+# Publisher for NDT Robot Pose (Only changing the yaw)
+class RobotNDTPosePublisher:
+    def __init__(self):
+        self.ndt_sub = rospy.Subscriber('/ndt_pose', PoseStamped, self.ndt_callback)
+        self.robot_pos_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
+
+    def ndt_callback(self,msg):
+        pose = PoseStamped()
+        pose.header.stamp = rospy.Time.now()
+        pose.pose.position.x = msg.pose.position.x
+        pose.pose.position.y = msg.pose.position.y
+
+        orientation_q = msg.pose.orientation
+        orientation_list = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
+        pose.pose.orientation.x = 0
+        pose.pose.orientation.y = 0
+        pose.pose.orientation.w = 0
+        pose.pose.orientation.z = euler_from_quaternion(orientation_list)
+        self.robot_pos_pub.publish(pose)
+
 
 # ------------------------------------------------------------------------
 # MAIN CALLER
@@ -146,12 +170,17 @@ if __name__ == '__main__':
         waypoint_publisher = WaypointPublisher()
         waypoint_publisher.publish_waypoint() # Publish it once?
 
+    if publish_ndt_pose_yaw:
+        rospy.init_node('robot_ndt_pose_publisher1')
+        robot_ndt_pose_publisher = RobotNDTPosePublisher()
+
+
     # Periodical Publish
-    rate = rospy.Rate(50)
+    rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         # Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
         if publish_pose:
             robot_pose_publisher.publish_robot_pose()
-
+    
 
         rate.sleep()
