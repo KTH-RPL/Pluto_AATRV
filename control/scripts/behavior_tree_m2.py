@@ -328,7 +328,7 @@ class global_path_client(pt.behaviour.Behaviour):
         self.client = actionlib.SimpleActionClient("plan_global_path", PlanGlobalPathAction)
         self.sent = False        
         self.c_goal = c_goal
-        self.path_pub_ = rospy.Publisher("global_path", Path, queue_size=1, latch=True)
+        self.path_pub_ = rospy.Publisher("/global_path", Path, queue_size=1, latch=True)
 
     def initialise(self):
         self.sent = False
