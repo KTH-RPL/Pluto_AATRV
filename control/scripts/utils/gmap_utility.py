@@ -84,7 +84,9 @@ class PolygonMap:
         plt.ylabel("Y")
         plt.title("Polygon Map with Obstacles and Trajectory")
         plt.grid(True)
-        plt.show()
+        #plt.show()
+        plt.savefig("/tmp/global_path.png")
+        plt.close()
 
 
 
