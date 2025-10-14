@@ -150,10 +150,11 @@ class RobotNDTPosePublisher:
 
         orientation_q = msg.pose.orientation
         orientation_list = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
+        _, _, yaw = euler_from_quaternion(orientation_list)
         pose.pose.orientation.x = 0
         pose.pose.orientation.y = 0
         pose.pose.orientation.w = 0
-        pose.pose.orientation.z = euler_from_quaternion(orientation_list)
+        pose.pose.orientation.z = yaw
         self.robot_pos_pub.publish(pose)
 
 
@@ -161,14 +162,14 @@ class RobotNDTPosePublisher:
 # MAIN CALLER
 if __name__ == '__main__':
     # Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
-    if publish_pose:
-        rospy.init_node('robot_pose_publisher1')
-        robot_pose_publisher = RobotPosePublisher()
+    # if publish_pose:
+    #     rospy.init_node('robot_pose_publisher1')
+    #     robot_pose_publisher = RobotPosePublisher()
 
-    if publish_waypoint:
-        rospy.init_node('waypoint_publisher_node', anonymous=True)
-        waypoint_publisher = WaypointPublisher()
-        waypoint_publisher.publish_waypoint() # Publish it once?
+    # if publish_waypoint:
+    #     rospy.init_node('waypoint_publisher_node', anonymous=True)
+    #     waypoint_publisher = WaypointPublisher()
+    #     waypoint_publisher.publish_waypoint() # Publish it once?
 
     if publish_ndt_pose_yaw:
         rospy.init_node('robot_ndt_pose_publisher1')
@@ -176,11 +177,12 @@ if __name__ == '__main__':
 
 
     # Periodical Publish
-    rate = rospy.Rate(10)
-    while not rospy.is_shutdown():
+    #rate = rospy.Rate(10)
+    rospy.spin()
+    #while not rospy.is_shutdown():
         # Publisher for Robot Pose (based on Odom for x y and IMU for yaw)
-        if publish_pose:
-            robot_pose_publisher.publish_robot_pose()
+        # if publish_pose:
+        #    robot_ndt_pose_publisher.publish_robot_pose()
     
 
-        rate.sleep()
+        #rate.sleep()
