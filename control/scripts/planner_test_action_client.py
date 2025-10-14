@@ -11,7 +11,8 @@ from utils import gmap_utility
 import matplotlib.pyplot as plt
 
 
-path_pub_ = rospy.Publisher("global_path", Path, queue_size=1, latch=True)
+path_pub_ = rospy.Publisher("/global_path", Path, queue_size=1, latch=True)
+client = None
 
 def feedback_callback(feedback):
     rospy.loginfo("Received feedback: Path segment with %d poses has been planned.", len(feedback.current_segment.poses))
@@ -22,6 +23,7 @@ def feedback_callback(feedback):
     # gmap_utility.polygon_map.visualize(feedback.current_segment.poses)
 
 def done_callback(status, result):
+    print("==========   Trying to execute done callback function ============")
     if status == actionlib.GoalStatus.SUCCEEDED:
         rospy.loginfo("Action finished successfully!")
         rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
@@ -45,6 +47,7 @@ def done_callback(status, result):
         rospy.logerr("Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
 
 def send_test_goal():
+    global client
     # 1. Initialize the action client
     client = actionlib.SimpleActionClient('plan_global_path', PlanGlobalPathAction)
 
