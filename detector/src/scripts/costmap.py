@@ -10,6 +10,86 @@ import tf2_ros
 # Standard Python Imports
 import numpy as np
 import cv2
+import time
+
+try:
+    from numba import jit, prange
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+# ==============================================================================
+# Numba-optimized helper functions
+# ==============================================================================
+
+if NUMBA_AVAILABLE:
+    @jit(nopython=True)
+    def _apply_lethal_and_gradient(dist_meters, costmap_grid, inflation_radius, 
+                                   gradient_end_radius, max_cost, gradient_width):
+        """Fast lethal and gradient computation."""
+        lethal_count = 0
+        gradient_count = 0
+        
+        for i in range(dist_meters.shape[0]):
+            for j in range(dist_meters.shape[1]):
+                d = dist_meters[i, j]
+                
+                if d <= inflation_radius:
+                    costmap_grid[i, j] = max_cost
+                    lethal_count += 1
+                elif gradient_width > 0 and d < gradient_end_radius:
+                    slope = -max_cost / gradient_width
+                    intercept = max_cost * (gradient_end_radius / gradient_width)
+                    cost = int(slope * d + intercept)
+                    costmap_grid[i, j] = max(0, min(cost, max_cost))
+                    gradient_count += 1
+        
+        return lethal_count, gradient_count
+    
+    @jit(nopython=True)
+    def _world_to_map_batch(wx_array, wy_array, robot_x, robot_y, map_size, resolution):
+        """Fast batch conversion of world to map coordinates."""
+        origin_x = robot_x - map_size / 2.0
+        origin_y = robot_y - map_size / 2.0
+        
+        mx_array = np.zeros_like(wx_array, dtype=np.int32)
+        my_array = np.zeros_like(wy_array, dtype=np.int32)
+        
+        for i in range(len(wx_array)):
+            mx_array[i] = int((wx_array[i] - origin_x) / resolution)
+            my_array[i] = int((wy_array[i] - origin_y) / resolution)
+        
+        return mx_array, my_array
+
+else:
+    def _apply_lethal_and_gradient(dist_meters, costmap_grid, inflation_radius, 
+                                   gradient_end_radius, max_cost, gradient_width):
+        """Fallback lethal and gradient computation."""
+        lethal_mask = dist_meters <= inflation_radius
+        costmap_grid[lethal_mask] = max_cost
+        lethal_count = np.sum(lethal_mask)
+        
+        gradient_count = 0
+        if gradient_width > 0:
+            gradient_mask = (dist_meters > inflation_radius) & (dist_meters < gradient_end_radius)
+            gradient_distances = dist_meters[gradient_mask]
+            slope = -max_cost / gradient_width
+            intercept = max_cost * (gradient_end_radius / gradient_width)
+            gradient_costs = (slope * gradient_distances + intercept).astype(np.uint8)
+            costmap_grid[gradient_mask] = gradient_costs
+            gradient_count = np.sum(gradient_mask)
+        
+        return lethal_count, gradient_count
+    
+    def _world_to_map_batch(wx_array, wy_array, robot_x, robot_y, map_size, resolution):
+        """Fallback batch conversion."""
+        origin_x = robot_x - map_size / 2.0
+        origin_y = robot_y - map_size / 2.0
+        
+        mx_array = ((wx_array - origin_x) / resolution).astype(np.int32)
+        my_array = ((wy_array - origin_y) / resolution).astype(np.int32)
+        
+        return mx_array, my_array
 
 class GlobalCostmapGenerator:
     def __init__(self):
@@ -21,7 +101,7 @@ class GlobalCostmapGenerator:
         robot_pose_topic = rospy.get_param('~robot_pose_topic', '/robot_pose')
         
         # Costmap properties
-        self.map_size_meters = rospy.get_param('~map_size', 20.0)  # Local window size around robot
+        self.map_size_meters = rospy.get_param('~map_size', 20.0)
         self.resolution = rospy.get_param('~resolution', 0.1)
         self.global_frame = rospy.get_param('~global_frame', 'odom')
         
@@ -39,7 +119,8 @@ class GlobalCostmapGenerator:
         self.robot_pose_received = False
         
         # Store obstacles with timestamps in global frame
-        self.persisted_obstacles = []  # List of (timestamp, marker) tuples
+        self.persisted_obstacles = []
+        self.new_obstacles_received = False
         
         # Pre-calculate map properties
         self.width_cells = int(self.map_size_meters / self.resolution)
@@ -53,6 +134,10 @@ class GlobalCostmapGenerator:
         # Store the current costmap for querying
         self.current_costmap = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
         
+        # Performance optimization: only regenerate on new obstacles
+        self.last_published_time = 0.0
+        self.min_publish_interval = rospy.get_param('~min_publish_interval', 0.05)  # Fallback publish interval
+        
         # ROS Subscribers and Publishers
         self.robot_pose_sub = rospy.Subscriber(robot_pose_topic, PoseStamped, 
                                                self.robot_pose_callback, queue_size=1)
@@ -60,10 +145,11 @@ class GlobalCostmapGenerator:
                                             self.obstacles_callback, queue_size=1)
         self.costmap_pub = rospy.Publisher(costmap_topic, OccupancyGrid, queue_size=1)
         
-        # Timer to publish costmap periodically even without new obstacles
-        self.publish_timer = rospy.Timer(rospy.Duration(0.1), self.timer_callback)
+        # Lightweight timer for occasional publishes (fallback)
+        self.publish_timer = rospy.Timer(rospy.Duration(0.5), self.timer_callback)
         
         rospy.loginfo("Global Costmap Generator initialized.")
+        rospy.loginfo(f"Numba optimization: {'ENABLED' if NUMBA_AVAILABLE else 'DISABLED'}")
         rospy.loginfo(f"Global frame: '{self.global_frame}'")
         rospy.loginfo(f"Local window size: {self.map_size_meters}m x {self.map_size_meters}m")
         rospy.loginfo(f"Resolution: {self.resolution}m/cell ({self.width_cells}x{self.height_cells} cells)")
@@ -79,11 +165,7 @@ class GlobalCostmapGenerator:
             rospy.loginfo(f"Robot pose received: ({self.robot_x:.2f}, {self.robot_y:.2f})")
     
     def world_to_map(self, wx, wy):
-        """
-        Converts world coordinates (in meters, in global frame) to map coordinates (in cells).
-        The map origin is centered on the current robot position.
-        """
-        # Origin is at robot position minus half the map size
+        """Converts world coordinates to map coordinates."""
         origin_x = self.robot_x - self.map_size_meters / 2.0
         origin_y = self.robot_y - self.map_size_meters / 2.0
         
@@ -92,9 +174,7 @@ class GlobalCostmapGenerator:
         return mx, my
     
     def map_to_world(self, mx, my):
-        """
-        Converts map coordinates (in cells) to world coordinates (in meters, in global frame).
-        """
+        """Converts map coordinates to world coordinates."""
         origin_x = self.robot_x - self.map_size_meters / 2.0
         origin_y = self.robot_y - self.map_size_meters / 2.0
         
@@ -103,7 +183,7 @@ class GlobalCostmapGenerator:
         return wx, wy
     
     def obstacles_callback(self, marker_array_msg):
-        """Process new obstacles and generate the costmap."""
+        """Process new obstacles and trigger costmap generation."""
         now = rospy.Time.now()
         
         rospy.logdebug(f"Received MarkerArray with {len(marker_array_msg.markers)} markers")
@@ -112,22 +192,16 @@ class GlobalCostmapGenerator:
         new_obstacles_added = 0
         if marker_array_msg.markers:
             for marker in marker_array_msg.markers:
-                # Skip DELETE markers
                 if marker.action == Marker.DELETE or marker.action == Marker.DELETEALL:
                     rospy.logdebug("Skipping DELETE marker")
                     continue
                 
-                # Log the marker details
-                rospy.logdebug(f"Marker {marker.id}: type={marker.type}, frame={marker.header.frame_id}, "
-                              f"pos=({marker.pose.position.x:.2f}, {marker.pose.position.y:.2f}), "
-                              f"scale=({marker.scale.x:.2f}, {marker.scale.y:.2f})")
-                
-                # Store the marker (already in global frame)
                 self.persisted_obstacles.append((now, marker))
                 new_obstacles_added += 1
         
         if new_obstacles_added > 0:
             rospy.loginfo_throttle(1.0, f"Added {new_obstacles_added} new obstacles. Total: {len(self.persisted_obstacles)}")
+            self.new_obstacles_received = True
         
         # Remove old obstacles based on memory duration
         before_cleanup = len(self.persisted_obstacles)
@@ -140,61 +214,75 @@ class GlobalCostmapGenerator:
         
         if before_cleanup != after_cleanup:
             rospy.logdebug(f"Cleaned up {before_cleanup - after_cleanup} old obstacles")
-    
-    def timer_callback(self, event):
-        """Periodically generate and publish the costmap."""
-        if not self.robot_pose_received:
-            rospy.logwarn_throttle(2.0, "Waiting for robot pose...")
-            return
         
+        # Generate costmap immediately on new obstacles
         self.generate_costmap()
     
+    def timer_callback(self, event):
+        """Periodic fallback publish (low frequency)."""
+        if not self.robot_pose_received:
+            return
+        
+        current_time = time.time()
+        if current_time - self.last_published_time > self.min_publish_interval:
+            self.publish_costmap(self.current_costmap)
+    
     def generate_costmap(self):
-        """Generate the costmap from all persisted obstacles."""
+        """Generate the costmap from all persisted obstacles with optimizations."""
         try:
-            # Initialize empty obstacle grid
+            if not self.robot_pose_received:
+                return
+            
             obstacle_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
             
             obstacles_drawn = 0
             obstacles_outside = 0
             
-            # Draw all obstacles that fall within the current map window
+            # Draw obstacles using vectorized operations where possible
             for timestamp, marker in self.persisted_obstacles:
                 if marker.type == Marker.CUBE:
-                    # For CUBE markers, extract the rectangular footprint
+                    # For CUBE markers: extract and draw rectangular footprint
                     center_x = marker.pose.position.x
                     center_y = marker.pose.position.y
                     half_width = marker.scale.x / 2.0
                     half_height = marker.scale.y / 2.0
                     
-                    # Create rectangle corners in world frame
-                    corners_world = [
-                        (center_x - half_width, center_y - half_height),
-                        (center_x + half_width, center_y - half_height),
-                        (center_x + half_width, center_y + half_height),
-                        (center_x - half_width, center_y + half_height)
-                    ]
+                    # Batch convert all corners at once (more cache-friendly)
+                    corners_world_x = np.array([
+                        center_x - half_width, center_x + half_width,
+                        center_x + half_width, center_x - half_width
+                    ], dtype=np.float32)
+                    corners_world_y = np.array([
+                        center_y - half_height, center_y - half_height,
+                        center_y + half_height, center_y + half_height
+                    ], dtype=np.float32)
                     
-                    # Convert to map coordinates
-                    corners_map = []
-                    for wx, wy in corners_world:
-                        mx, my = self.world_to_map(wx, wy)
-                        # Add some tolerance for edges
+                    if NUMBA_AVAILABLE:
+                        mx_arr, my_arr = _world_to_map_batch(
+                            corners_world_x, corners_world_y,
+                            self.robot_x, self.robot_y,
+                            self.map_size_meters, self.resolution
+                        )
+                    else:
+                        mx_arr = ((corners_world_x - (self.robot_x - self.map_size_meters / 2.0)) / self.resolution).astype(np.int32)
+                        my_arr = ((corners_world_y - (self.robot_y - self.map_size_meters / 2.0)) / self.resolution).astype(np.int32)
+                    
+                    # Check bounds and build corners list
+                    valid_corners = []
+                    for mx, my in zip(mx_arr, my_arr):
                         if -10 <= mx < self.width_cells + 10 and -10 <= my < self.height_cells + 10:
-                            # Clip to valid range
                             mx = max(0, min(mx, self.width_cells - 1))
                             my = max(0, min(my, self.height_cells - 1))
-                            corners_map.append([mx, my])
+                            valid_corners.append([mx, my])
                     
-                    if len(corners_map) >= 3:
-                        cv2.fillPoly(obstacle_grid, [np.array(corners_map, dtype=np.int32)], 255)
+                    if len(valid_corners) >= 3:
+                        cv2.fillPoly(obstacle_grid, [np.array(valid_corners, dtype=np.int32)], 255)
                         obstacles_drawn += 1
-                        rospy.logdebug(f"Drew CUBE obstacle at ({center_x:.2f}, {center_y:.2f})")
                     else:
                         obstacles_outside += 1
                 
                 elif marker.type == Marker.CYLINDER:
-                    # For CYLINDER markers, create a circular footprint
+                    # For CYLINDER markers: draw circular footprint
                     center_x = marker.pose.position.x
                     center_y = marker.pose.position.y
                     radius = marker.scale.x / 2.0
@@ -202,50 +290,39 @@ class GlobalCostmapGenerator:
                     cx, cy = self.world_to_map(center_x, center_y)
                     radius_cells = int(radius / self.resolution)
                     
-                    # Check if center is reasonably close to map
                     if -radius_cells <= cx < self.width_cells + radius_cells and \
                        -radius_cells <= cy < self.height_cells + radius_cells:
-                        # Clip coordinates to valid range
                         cx = max(0, min(cx, self.width_cells - 1))
                         cy = max(0, min(cy, self.height_cells - 1))
                         cv2.circle(obstacle_grid, (cx, cy), radius_cells, 255, -1)
                         obstacles_drawn += 1
-                        rospy.logdebug(f"Drew CYLINDER obstacle at ({center_x:.2f}, {center_y:.2f})")
                     else:
                         obstacles_outside += 1
             
             if obstacles_drawn > 0:
                 rospy.loginfo_throttle(2.0, f"Drew {obstacles_drawn} obstacles, {obstacles_outside} outside map window")
             
-            # Apply distance transform and gradient inflation
+            # Distance transform (already fast in OpenCV)
             dist_transform_input = cv2.bitwise_not(obstacle_grid)
             dist_pixels = cv2.distanceTransform(dist_transform_input, cv2.DIST_L2, 5)
             dist_meters = dist_pixels * self.resolution
             
-            costmap_grid = np.zeros_like(dist_meters, dtype=np.uint8)
+            # Initialize costmap
+            costmap_grid = np.zeros((self.height_cells, self.width_cells), dtype=np.uint8)
             
-            # Lethal zone
-            lethal_mask = dist_meters <= self.inflation_radius
-            costmap_grid[lethal_mask] = self.max_cost
-            lethal_count = np.sum(lethal_mask)
-            
-            # Gradient zone
-            gradient_count = 0
-            if self.gradient_width > 0:
-                gradient_mask = (dist_meters > self.inflation_radius) & (dist_meters < self.gradient_end_radius)
-                gradient_distances = dist_meters[gradient_mask]
-                slope = -self.max_cost / self.gradient_width
-                intercept = self.max_cost * (self.gradient_end_radius / self.gradient_width)
-                gradient_costs = slope * gradient_distances + intercept
-                costmap_grid[gradient_mask] = gradient_costs.astype(np.uint8)
-                gradient_count = np.sum(gradient_mask)
+            # Apply lethal and gradient using Numba (if available) for fast computation
+            lethal_count, gradient_count = _apply_lethal_and_gradient(
+                dist_meters, costmap_grid, self.inflation_radius,
+                self.gradient_end_radius, self.max_cost, self.gradient_width
+            )
             
             if obstacles_drawn > 0:
                 rospy.loginfo_throttle(2.0, f"Costmap stats: {lethal_count} lethal cells, {gradient_count} gradient cells")
             
-            # Store current costmap for querying
+            # Store current costmap
             self.current_costmap = costmap_grid
             
+            # Publish immediately
             self.publish_costmap(costmap_grid)
         
         except Exception as e:
@@ -255,6 +332,8 @@ class GlobalCostmapGenerator:
     
     def publish_costmap(self, grid_data):
         """Convert the NumPy grid to an OccupancyGrid message and publish it."""
+        self.last_published_time = time.time()
+        
         msg = OccupancyGrid()
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = self.global_frame
@@ -265,27 +344,19 @@ class GlobalCostmapGenerator:
         msg.info.origin.position.y = self.robot_y - self.map_size_meters / 2.0
         msg.info.origin.position.z = 0.0
         msg.info.origin.orientation.w = 1.0
+        
+        # Optimized: flatten once, convert once
         msg.data = grid_data.flatten().astype(np.int8).tolist()
         self.costmap_pub.publish(msg)
     
     def get_cost_at_world_point(self, world_x, world_y):
-        """
-        Query the cost at a given world point (x, y in global frame).
-        
-        Args:
-            world_x: X coordinate in global frame (meters)
-            world_y: Y coordinate in global frame (meters)
-        
-        Returns:
-            int: Cost value [0-100], or -1 if point is outside the current map window
-        """
+        """Query the cost at a given world point."""
         mx, my = self.world_to_map(world_x, world_y)
         
-        # Check if point is within current map bounds
         if 0 <= mx < self.width_cells and 0 <= my < self.height_cells:
             return int(self.current_costmap[my, mx])
         else:
-            return -1  # Point is outside the map window
+            return -1
 
 def main():
     try:
