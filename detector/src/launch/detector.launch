@@ -9,16 +9,15 @@
     <!-- ================================================================== -->
     <!-- The launch-prefix executes cProfile on the node.
          The profile data will be saved to 'detector.prof' inside your 'detector' package directory. -->
-    <node name="detector" pkg="detector" type="detector.py" output="screen"
-          launch-prefix="/home/sankeerth/pluto/bin/python3 -m cProfile -o $(find detector)/detector.prof">
+    <node name="detector" pkg="detector" type="detector.py" output="screen">
         
         <!-- ... (parameters are unchanged) ... -->
         <param name="depth_topic"           value="/rsD455_node0/depth/image_rect_raw"/>
-        <param name="obstacle_topic"        value="/detected_obstacles1"/>
+        <param name="obstacle_topic"        value="/detected_obstacles"/>
         <param name="output_frame_id"       value="base_footprint"/>
         <param name="safety_buffer"         value="0.1"/>
         <param name="depth_scale_factor"    value="1000.0"/>
-        <param name="~target_hz"            value="2.0"/>
+        <param name="~target_hz"            value="5.0"/>
         <rosparam param="uv_detector">
             row_downsample: 4
             col_scale: 0.5
@@ -42,11 +41,10 @@
     <!-- ================================================================== -->
     <!-- We also profile the costmap node.
          The profile data will be saved to 'costmap.prof' inside your 'detector' package directory. -->
-    <node pkg="detector" type="costmap.py" name="global_costmap_generator" output="screen"
-          launch-prefix="/usr/bin/python3 -m cProfile -o $(find detector)/costmap.prof">
+    <node pkg="detector" type="costmap.py" name="global_costmap_generator" output="screen">
 
         <!-- ... (parameters are unchanged) ... -->
-        <param name="obstacle_topic" value="/detected_obstacles1" />
+        <param name="obstacle_topic" value="/detected_obstacles" />
         <param name="costmap_topic" value="/global_costmap" />
         <param name="robot_pose_topic" value="/robot_pose" />
         <param name="global_frame" value="odom" />

@@ -3,7 +3,7 @@ import rosbag
 import matplotlib.pyplot as plt
 
 # === CONFIG ===
-bag_file = "ndt_debug_data_2025-10-11-12-47-43.bag"
+bag_file = "/home/nuc/catkin_noetic/src/Pluto_AATRV/localisation_src/odom_plotter/scripts/ndt_debug_data_2025-10-15-12-11-06.bag"
 
 # === Load Data ===
 time_exe = []

@@ -40,7 +40,7 @@ def done_callback(status, result):
             plt.close('all')
         except:
             pass
-        # gmap_utility.polygon_map.visualize(result.global_plan.poses)
+        gmap_utility.polygon_map.visualize(result.global_plan.poses)
     elif status == actionlib.GoalStatus.PREEMPTED:
         rospy.logwarn("Action was preempted by a new goal.")
     else:
