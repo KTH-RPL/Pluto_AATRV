@@ -221,7 +221,7 @@ void NdtLocalizer::callback_pointcloud(
     ndt_.getFitnessScore() > 0.5) {
     is_converged = false;
     ++skipping_publish_num;
-    std::cout << "Not Converged" << std::endl;
+    std::cout << "========================= Not Converged ==================================" << std::endl;
   } else {
     skipping_publish_num = 0;
   }
@@ -229,13 +229,13 @@ void NdtLocalizer::callback_pointcloud(
   delta_trans = pre_trans.inverse() * result_pose_matrix;
 
   Eigen::Vector3f delta_translation = delta_trans.block<3, 1>(0, 3);
-  std::cout<<"delta x: "<<delta_translation(0) << " y: "<<delta_translation(1)<<
-             " z: "<<delta_translation(2)<<std::endl;
+  // std::cout<<"delta x: "<<delta_translation(0) << " y: "<<delta_translation(1)<<
+            //  " z: "<<delta_translation(2)<<std::endl;
 
   Eigen::Matrix3f delta_rotation_matrix = delta_trans.block<3, 3>(0, 0);
   Eigen::Vector3f delta_euler = delta_rotation_matrix.eulerAngles(2,1,0);
-  std::cout<<"delta yaw: "<<delta_euler(0) << " pitch: "<<delta_euler(1)<<
-             " roll: "<<delta_euler(2)<<std::endl;
+  // std::cout<<"delta yaw: "<<delta_euler(0) << " pitch: "<<delta_euler(1)<<
+            //  " roll: "<<delta_euler(2)<<std::endl;
 
   pre_trans = result_pose_matrix;
   
@@ -281,11 +281,11 @@ void NdtLocalizer::callback_pointcloud(
   key_value_stdmap_["skipping_publish_num"] = std::to_string(skipping_publish_num);
 
   std::cout << "------------------------------------------------" << std::endl;
-  std::cout << "align_time: " << align_time << "ms" << std::endl;
+  // std::cout << "align_time: " << align_time << "ms" << std::endl;
   std::cout << "exe_time: " << exe_time << "ms" << std::endl;
   std::cout << "trans_prob: " << transform_probability << std::endl;
-  std::cout << "iter_num: " << iteration_num << std::endl;
-  std::cout << "skipping_publish_num: " << skipping_publish_num << std::endl;
+  // std::cout << "iter_num: " << iteration_num << std::endl;
+  // std::cout << "skipping_publish_num: " << skipping_publish_num << std::endl;
 }
 
 void NdtLocalizer::init_params(){
