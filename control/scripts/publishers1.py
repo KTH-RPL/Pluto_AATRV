@@ -174,6 +174,8 @@ if __name__ == '__main__':
     if publish_ndt_pose_yaw:
         rospy.init_node('robot_ndt_pose_publisher1')
         robot_ndt_pose_publisher = RobotNDTPosePublisher()
+        waypoint_publisher = WaypointPublisher()
+        waypoint_publisher.publish_waypoint() # Publish it once?
 
 
     # Periodical Publish
