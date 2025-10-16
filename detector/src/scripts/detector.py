@@ -1,4 +1,4 @@
-#!/home/sankeerth/pluto/bin/python3
+#!/home/nuv/catkin_noetic/src/Pluto_AATRV/detector/detector/bin/python3
 
 # ROS1 Imports
 import rospy
@@ -14,9 +14,47 @@ import math
 import scipy.ndimage as ndi
 from scipy.spatial.transform import Rotation as R
 import traceback
+import time
+
+try:
+    from numba import jit, prange
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    rospy.logwarn("Numba not available. Install with: pip install numba")
 
 # ==============================================================================
-# The UVDetector and helper classes (un changed from the original script)
+# Numba-optimized helper functions
+# ==============================================================================
+
+if NUMBA_AVAILABLE:
+    @jit(nopython=True)
+    def _process_valid_depth_fast(depth_vals, min_dist, max_dist, bin_width):
+        """Fast depth binning using Numba."""
+        valid_mask = (depth_vals > min_dist) & (depth_vals < max_dist)
+        return valid_mask, ((depth_vals - min_dist) / bin_width).astype(np.int32)
+
+    @jit(nopython=True, parallel=True)
+    def _transform_corners_fast(corners_cam, body2cam):
+        """Fast matrix multiplication for corner transformation."""
+        n = corners_cam.shape[0]
+        corners_robot = np.zeros_like(corners_cam)
+        for i in prange(n):
+            for j in range(4):
+                for k in range(4):
+                    corners_robot[i, j] += body2cam[j, k] * corners_cam[i, k]
+        return corners_robot
+
+else:
+    def _process_valid_depth_fast(depth_vals, min_dist, max_dist, bin_width):
+        valid_mask = (depth_vals > min_dist) & (depth_vals < max_dist)
+        return valid_mask, ((depth_vals - min_dist) / bin_width).astype(np.int32)
+
+    def _transform_corners_fast(corners_cam, body2cam):
+        return (body2cam @ corners_cam.T).T
+
+# ==============================================================================
+# The UVDetector and helper classes
 # ==============================================================================
 
 class UVbox:
@@ -43,7 +81,7 @@ class UVDetector:
         self.fy = config['depth_intrinsics'][1]
         self.px = config['depth_intrinsics'][2]
         self.py = config['depth_intrinsics'][3]
-        self.body2CamDepth = np.array(config['body_to_camera_depth']).reshape(4, 4)
+        self.body2CamDepth = np.array(config['body_to_camera_depth'], dtype=np.float32).reshape(4, 4)
         self.row_downsample = config['uv_detector']['row_downsample']
         self.col_scale = config['uv_detector']['col_scale']
         self.min_dist = config['uv_detector']['min_dist'] * 1000
@@ -56,7 +94,7 @@ class UVDetector:
     def detect(self, depth_image, robot_pose):
         self.robot_pose = robot_pose
         self.box3Ds_robot_frame = []
-        self.depth = depth_image
+        self.depth = depth_image.astype(np.float32)
         self.extract_U_map()
         self.extract_bb()
         self.extract_3Dbox()
@@ -70,14 +108,21 @@ class UVDetector:
         if hist_size == 0: return
         bin_width = math.ceil((self.max_dist - self.min_dist) / float(hist_size))
         if bin_width == 0: return
+        
         self.U_map = np.zeros((hist_size, depth_rescale.shape[1]), dtype=np.uint16)
         depth_vals = depth_rescale * (1000.0 / self.depth_scale)
-        valid_mask = (depth_vals > self.min_dist) & (depth_vals < self.max_dist)
-        cols, rows = np.meshgrid(np.arange(depth_rescale.shape[1]), np.arange(depth_rescale.shape[0]))
-        valid_cols = cols[valid_mask]
-        valid_depths = depth_vals[valid_mask]
-        bin_indices = ((valid_depths - self.min_dist) / bin_width).astype(np.int32)
-        np.add.at(self.U_map, (bin_indices, valid_cols), 1)
+        
+        # Use Numba-optimized function
+        valid_mask, bin_indices = _process_valid_depth_fast(
+            depth_vals, self.min_dist, self.max_dist, bin_width
+        )
+        
+        valid_cols = np.arange(depth_rescale.shape[1])[np.any(valid_mask, axis=0)]
+        for col in valid_cols:
+            col_valid_mask = valid_mask[:, col]
+            col_bins = bin_indices[col_valid_mask, col]
+            np.add.at(self.U_map[:, col], col_bins, 1)
+        
         self.U_map = self.U_map.astype(np.uint8)
         self.U_map = cv2.GaussianBlur(self.U_map, (5, 9), 10)
 
@@ -174,14 +219,24 @@ class UVDetector:
         for box_cam in self.box3Ds_camera_frame:
             dx, dy, dz = box_cam['x_width'] / 2, box_cam['y_width'] / 2, box_cam['z_width'] / 2
             corners_cam = np.array([
-                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']-dz, 1],[box_cam['x']+dx, box_cam['y']-dy, box_cam['z']-dz, 1],
-                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']-dz, 1],[box_cam['x']+dx, box_cam['y']+dy, box_cam['z']-dz, 1],
-                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']+dz, 1],[box_cam['x']+dx, box_cam['y']-dy, box_cam['z']+dz, 1],
-                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']+dz, 1],[box_cam['x']+dx, box_cam['y']+dy, box_cam['z']+dz, 1]
-            ])
-            corners_robot = (self.body2CamDepth @ corners_cam.T).T
-            min_coords, max_coords = np.min(corners_robot[:,:3], axis=0), np.max(corners_robot[:,:3], axis=0)
-            center_robot, size_robot = (min_coords + max_coords) / 2, max_coords - min_coords
+                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']-dz, 1],
+                [box_cam['x']+dx, box_cam['y']-dy, box_cam['z']-dz, 1],
+                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']-dz, 1],
+                [box_cam['x']+dx, box_cam['y']+dy, box_cam['z']-dz, 1],
+                [box_cam['x']-dx, box_cam['y']-dy, box_cam['z']+dz, 1],
+                [box_cam['x']+dx, box_cam['y']-dy, box_cam['z']+dz, 1],
+                [box_cam['x']-dx, box_cam['y']+dy, box_cam['z']+dz, 1],
+                [box_cam['x']+dx, box_cam['y']+dy, box_cam['z']+dz, 1]
+            ], dtype=np.float32)
+            
+            # Use Numba-optimized corner transformation
+            corners_robot = _transform_corners_fast(corners_cam, self.body2CamDepth)
+            
+            min_coords = np.min(corners_robot[:,:3], axis=0)
+            max_coords = np.max(corners_robot[:,:3], axis=0)
+            center_robot = (min_coords + max_coords) / 2
+            size_robot = max_coords - min_coords
+            
             self.box3Ds_robot_frame.append({
                 'x': center_robot[0], 'y': center_robot[1], 'z': center_robot[2],
                 'x_width': size_robot[0], 'y_width': size_robot[1], 'z_width': size_robot[2]
@@ -202,21 +257,25 @@ class UVDetector:
         return self.box3Ds_world_frame
 
 # ==============================================================================
-# The ROS1 Node
+# The ROS1 Node with Frequency Limiting
 # ==============================================================================
 
 class UvDetectorNodeROS1:
     def __init__(self):
         rospy.init_node('uv_detector_node', anonymous=True)
 
+        # --- Frequency limiting at 2Hz ---
+        self.target_hz = rospy.get_param('~target_hz', 2.0)
+        self.min_time_between_processing = 1.0 / self.target_hz
+        self.last_process_time = 0.0
+
         # --- Get parameters from ROS Param Server ---
         depth_topic = rospy.get_param('~depth_topic', '/rsD455_node0/depth/image_rect_raw')
         obstacle_topic = rospy.get_param('~obstacle_topic', '/detected_obstacles')
         self.output_frame_id = rospy.get_param('~output_frame_id', 'base_link')
-        self.safety_buffer = rospy.get_param('~safety_buffer', 0.1)  # Extra size in meters for each dimension
+        self.safety_buffer = rospy.get_param('~safety_buffer', 0.1)
 
         # --- Load detector configuration from parameters ---
-        # This makes the node highly configurable via launch files
         detector_config = {
             'depth_intrinsics': rospy.get_param('~depth_intrinsics'),
             'body_to_camera_depth': rospy.get_param('~body_to_camera_depth'),
@@ -233,6 +292,7 @@ class UvDetectorNodeROS1:
         }
         self.detector = UVDetector(detector_config)
         self.bridge = CvBridge()
+        self.current_robot_pose = (0.0, 0.0, 0.0)
 
         # --- Create subscriber and publisher ---
         self.robot_pose_sub = rospy.Subscriber('/robot_pose', PoseStamped, self.robot_pose_callback, queue_size=1)
@@ -240,6 +300,8 @@ class UvDetectorNodeROS1:
         self.publisher = rospy.Publisher(obstacle_topic, MarkerArray, queue_size=10)
 
         rospy.loginfo("UV Detector Node for ROS1 initialized.")
+        rospy.loginfo(f"Numba optimization: {'ENABLED' if NUMBA_AVAILABLE else 'DISABLED'}")
+        rospy.loginfo(f"Processing frequency: {self.target_hz} Hz")
         rospy.loginfo(f"Subscribing to depth topic: {depth_topic}")
         rospy.loginfo(f"Publishing obstacle markers on: {obstacle_topic}")
 
@@ -247,39 +309,38 @@ class UvDetectorNodeROS1:
         """Callback to update the robot's current pose."""
         x = msg.pose.position.x
         y = msg.pose.position.y
-        # Assuming yaw is stored in orientation.z for simplicity; in practice, convert from quaternion
-        yaw = msg.pose.orientation.z  
+        yaw = msg.pose.orientation.z
         self.current_robot_pose = (x, y, yaw)
 
     def depth_callback(self, msg):
-        """Main callback to process incoming depth images."""
+        """Main callback to process incoming depth images with frequency limiting."""
+        current_time = time.time()
+        
+        # Check if enough time has passed since last processing
+        if current_time - self.last_process_time < self.min_time_between_processing:
+            return  # Skip this frame
+        
+        self.last_process_time = current_time
+        
         try:
-            # Use cv_bridge to convert ROS Image message to OpenCV image
             depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error: {e}")
             return
         
         try:
-            # Run the detection algorithm
             detected_boxes = self.detector.detect(depth_image, self.current_robot_pose)
-
-            # Convert detections to MarkerArray message
             marker_array_msg = self.create_obstacle_markers(detected_boxes, msg.header)
-
-            # Publish the result
             self.publisher.publish(marker_array_msg)
         
         except Exception as e:
             rospy.logerr(f"Failed to process depth image: {e}")
             traceback.print_exc()
 
-
     def create_obstacle_markers(self, boxes, header):
         """Converts a list of 3D boxes into a MarkerArray of 2D flat rectangles (CUBES)."""
         marker_array = MarkerArray()
         
-        # This special marker deletes all old markers in this namespace.
         delete_marker = Marker()
         delete_marker.header.frame_id = "odom"
         delete_marker.action = Marker.DELETEALL
@@ -288,33 +349,26 @@ class UvDetectorNodeROS1:
         for i, box in enumerate(boxes):
             marker = Marker()
             marker.header = header
-            marker.header.frame_id = "odom" # Ensure correct frame
+            marker.header.frame_id = "odom"
             marker.ns = "uv_obstacles"
             marker.id = i
-            # *** MODIFICATION: Use CUBE instead of CYLINDER for a rectangular shape ***
             marker.type = Marker.CUBE
             marker.action = Marker.ADD
 
-            # Position is the center of the box
             marker.pose.position.x = box['x']
             marker.pose.position.y = box['y']
-            marker.pose.position.z = 0.05  # Place rectangle slightly above the ground plane
-            # The boxes are axis-aligned in the output frame, so no rotation is needed.
+            marker.pose.position.z = 0.05
             marker.pose.orientation.w = 1.0
 
-            # *** MODIFICATION: Scale is now the width/height of the box + safety buffer ***
-            # This provides a much tighter fit than a circle for long objects.
             marker.scale.x = box['x_width'] + self.safety_buffer
             marker.scale.y = box['y_width'] + self.safety_buffer
-            marker.scale.z = 0.1  # A small height makes it a flat rectangle
+            marker.scale.z = 0.1
 
-            # Color (e.g., semi-transparent orange)
             marker.color.r = 1.0
             marker.color.g = 0.5
             marker.color.b = 0.0
             marker.color.a = 0.7
 
-            # Lifetime: if a new message isn't received, the marker will disappear
             marker.lifetime = rospy.Duration(0.5)
             
             marker_array.markers.append(marker)

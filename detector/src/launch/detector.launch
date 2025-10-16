@@ -1,16 +1,23 @@
 <launch>
     <!-- ================================================================== -->
-    <!-- Original Obstacle Detector Node -->
+    <!-- Helper & Pose Nodes (unchanged) -->
     <!-- ================================================================== -->
     <node name="corrected_robot_pose_publisher" pkg="detector" type="pose_corrector.py" output="screen"/>
-    <!-- <node name="robot_pose_publisher" pkg="robot_controller" type="publishers1.py" output="screen"/> -->
+
+    <!-- ================================================================== -->
+    <!-- Obstacle Detector Node with Profiler -->
+    <!-- ================================================================== -->
+    <!-- The launch-prefix executes cProfile on the node.
+         The profile data will be saved to 'detector.prof' inside your 'detector' package directory. -->
     <node name="detector" pkg="detector" type="detector.py" output="screen">
-        <!-- ... (detector parameters are unchanged) ... -->
+        
+        <!-- ... (parameters are unchanged) ... -->
         <param name="depth_topic"           value="/rsD455_node0/depth/image_rect_raw"/>
         <param name="obstacle_topic"        value="/detected_obstacles"/>
         <param name="output_frame_id"       value="base_footprint"/>
         <param name="safety_buffer"         value="0.1"/>
         <param name="depth_scale_factor"    value="1000.0"/>
+        <param name="~target_hz"            value="5.0"/>
         <rosparam param="uv_detector">
             row_downsample: 4
             col_scale: 0.5
@@ -30,36 +37,27 @@
     </node>
 
     <!-- ================================================================== -->
-    <!-- UPDATED: Costmap Generator Node with Gradient Inflation -->
+    <!-- Costmap Generator Node with Profiler -->
     <!-- ================================================================== -->
+    <!-- We also profile the costmap node.
+         The profile data will be saved to 'costmap.prof' inside your 'detector' package directory. -->
     <node pkg="detector" type="costmap.py" name="global_costmap_generator" output="screen">
-        <!-- Enable debug logging -->
-        <!-- <env name="ROSCONSOLE_CONFIG_FILE" value="$(find your_package_name)/config/debug.config" /> -->
-        <!-- Or set log level directly -->
-        <!-- <param name="log_level" value="debug" /> -->
-        <!-- Topics -->
+
+        <!-- ... (parameters are unchanged) ... -->
         <param name="obstacle_topic" value="/detected_obstacles" />
         <param name="costmap_topic" value="/global_costmap" />
         <param name="robot_pose_topic" value="/robot_pose" />
-        
-        <!-- Frames -->
         <param name="global_frame" value="odom" />
-        
-        <!-- Costmap Properties -->
-        <param name="map_size" value="20.0" />        <!-- Size of local window around robot (meters) -->
-        <param name="resolution" value="0.1" />        <!-- Resolution (meters/cell) -->
-        
-        <!-- Inflation Parameters -->
-        <param name="inflation_radius" value="0.5" />       <!-- Lethal radius (meters) , default 0.5-->
-        <param name="gradient_end_radius" value="1" />    <!-- End of gradient zone (meters) -->
-        <param name="max_cost" value="100" />               <!-- Maximum cost value -->
-        
-        <!-- Memory Parameters -->
-        <param name="memory_duration" value="5.0" />   <!-- How long to remember obstacles (seconds) -->
+        <param name="map_size" value="20.0" />
+        <param name="resolution" value="0.1" />
+        <param name="inflation_radius" value="0.5" />
+        <param name="gradient_end_radius" value="1" />
+        <param name="max_cost" value="100" />
+        <param name="memory_duration" value="5.0" />
     </node>
 
     <!-- ================================================================== -->
-    <!-- RViz Visualization -->
+    <!-- RViz Visualization (unchanged) -->
     <!-- ================================================================== -->
     <node name="rviz_detector" pkg="rviz" type="rviz" args="-d $(find detector)/src/rviz.rviz" required="true"/>
     

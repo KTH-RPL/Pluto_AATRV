@@ -1,6 +1,6 @@
 <launch>
   <!-- Launch Pluto -->
-  <include file="$(find pluto)/launch/pluto.launch" />
+  <include file="$(find pluto)/launch/pluto_no_joy.launch" />
 
   <!-- Launch VectorNav -->
   <include file="$(find vectornav)/launch/vectornav.launch" />
@@ -15,7 +15,7 @@
   <node pkg="robot_controller" type="publishers1.py" name="publisher_node" output="screen" />
 
   <!-- Launch Robot Controller (liveplot.py) -->
-  <node pkg="robot_controller" type="live_plot.py" name="robot_controller_node" output="screen" />
+  <!-- <node pkg="robot_controller" type="live_plot.py" name="robot_controller_node" output="screen" /> -->
 
   <!-- Launch robot_pose to base_link converter -->
     <node pkg="robot_controller" type="robot_pose_to_base_linktf.py" name="base_footprint_node" output="screen" />
