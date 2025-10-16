@@ -12,7 +12,7 @@ from std_msgs.msg import Float32
 
 from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal
 from robot_controller.srv import RunControl
-
+from sensor_msgs.msg import PointCloud2
 # import gmap_utility
 import py_trees.display as display
 import matplotlib.pyplot as plt
@@ -28,11 +28,20 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
         c_goal = goal_robot_condition()
 
         # Create localization recovery fallback
-        localization_fallback = pt.composites.Selector(
-            name="Localization Recovery Fallback",
+        # localization_fallback = pt.composites.Selector(
+        #     name="Localization Recovery Fallback",
+        #     children=[
+        #         check_localization(c_goal),  # First try: check if localization is good
+        #         recover_localization(c_goal)  # Fallback: recover localization
+        #     ]
+        # )
+
+        # --- New system health checks ---
+        system_check = pt.composites.Sequence(
+            name="System Check",
             children=[
-                check_localization(c_goal),  # First try: check if localization is good
-                recover_localization(c_goal)  # Fallback: recover localization
+                check_ouster_points(timeout=1.0 ),     # Check LiDAR
+                check_robot_pose(c_goal,timeout=1.0, republish_interval=5.0)   # Check robot pose
             ]
         )
 
@@ -43,7 +52,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
 
         s1 = pt.composites.Sequence(
             name="Pluto Sequence", 
-            children=[localization_fallback, b0, control_planner(c_goal)]
+            children=[b0, control_planner(c_goal)]
         )
 
         b1 = pt.composites.Selector(
@@ -51,7 +60,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
             children=[goal_reached(c_goal), s1]
         )
 
-        tree = RSequence(name="Main sequence", children=[b1])
+        tree = RSequence(name="Main sequence", children=[system_check, b1])
         super(M2BehaviourTree, self).__init__(tree)
 
         rospy.sleep(5)
@@ -69,11 +78,12 @@ class goal_robot_condition():
 
         # Track goal index for multi-goal execution
         self.goal_index = 0
-        self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=1)
+        self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
 
         rospy.Subscriber("/ndt_pose", PoseStamped, self.ndt_pose_cb)
+        rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
         rospy.Subscriber("/waypoints", Path, self.waypoints_callback)
-        rospy.Subscriber("/transform_probability", Float32, self.transform_probability_cb)
+        # rospy.Subscriber("/transform_probability", Float32, self.transform_probability_cb)
 
         # Save pose on shutdown
         rospy.on_shutdown(self.save_last_pose_on_shutdown)
@@ -92,40 +102,44 @@ class goal_robot_condition():
         self.transform_probability = msg.data   
         
     def ndt_pose_cb(self, msg):
-        self.robot_pose = msg
+        # self.robot_pose = msg
 
-        if self.transform_probability is not None:
-            pose_entry = {
-                "timestamp": rospy.Time.now().to_sec(),
-                "fitness_score": self.transform_probability,
-                "pose": {
-                    "position": {
-                        "x": msg.pose.position.x,
-                        "y": msg.pose.position.y,
-                        "z": msg.pose.position.z
-                    },
-                    "orientation": {
-                        "x": msg.pose.orientation.x,
-                        "y": msg.pose.orientation.y,
-                        "z": msg.pose.orientation.z,
-                        "w": msg.pose.orientation.w
-                    }
+        # if self.transform_probability is not None:
+        pose_entry = {
+            "timestamp": rospy.Time.now().to_sec(),
+            "fitness_score": self.transform_probability,
+            "pose": {
+                "position": {
+                    "x": msg.pose.position.x,
+                    "y": msg.pose.position.y,
+                    "z": msg.pose.position.z
+                },
+                "orientation": {
+                    "x": msg.pose.orientation.x,
+                    "y": msg.pose.orientation.y,
+                    "z": msg.pose.orientation.z,
+                    "w": msg.pose.orientation.w
                 }
             }
-            
-            self.valid_poses.append(pose_entry)
-            
+        }
+        
+        self.valid_poses.append(pose_entry)
+        self.last_good_pose = pose_entry    
             # Update last good pose if score is good
-            if self.transform_probability <= 0.5:
-                self.last_good_pose = pose_entry
-                # Reset recovery timer when we get good localization
-                self.localization_recovery_start_time = None
+            # if self.transform_probability <= 0.5:
+            #     self.last_good_pose = pose_entry
+            #     # Reset recovery timer when we get good localization
+            #     self.localization_recovery_start_time = None
 
-            # Keep only last 1000 poses
-            if len(self.valid_poses) > 1000:
-                self.valid_poses = self.valid_poses[-1000:]
-                
-            self.save_pose_history()
+        # Keep only last 1000 poses
+        if len(self.valid_poses) > 1000:
+            self.valid_poses = self.valid_poses[-1000:]
+            
+        self.save_pose_history()
+    
+    def robot_pose_cb(self, msg):
+        self.robot_pose = msg
+
     
     def save_pose_history(self):
         try:
@@ -145,16 +159,16 @@ class goal_robot_condition():
                 return pose
         return None
     
-    def quaternion_to_yaw(self,orientation):
-        """Convert quaternion to yaw angle (in radians)"""
-        x = orientation.x
-        y = orientation.y
-        z = orientation.z
-        w = orientation.w
+    # def quaternion_to_yaw(self,orientation):
+    #     """Convert quaternion to yaw angle (in radians)"""
+    #     x = orientation.x
+    #     y = orientation.y
+    #     z = orientation.z
+    #     w = orientation.w
         
-        # Convert quaternion to yaw
-        yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-        return yaw
+    #     # Convert quaternion to yaw
+    #     yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    #     return yaw
     
     # def start_localization_recovery(self):
     #     """Start tracking recovery time"""
@@ -187,6 +201,89 @@ class goal_robot_condition():
             self.goals = pose_array
             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals.")
 
+class check_robot_pose(pt.behaviour.Behaviour):
+    def __init__(self, c_goal, timeout=2.0, republish_interval=10.0):
+        super(check_robot_pose, self).__init__("CheckRobotPose")
+        self.c_goal = c_goal
+        self.timeout = timeout
+        self.republish_interval = republish_interval
+
+        self.last_pose_time = rospy.Time.now()
+        self.last_publish_time = 0.0
+        self.has_published = False
+
+        # ROS I/O
+        self.sub = rospy.Subscriber("/robot_pose", PoseStamped, self.pose_cb)
+        self.initial_pose_pub = rospy.Publisher("/initialpose", PoseStamped, queue_size=10)
+
+    def pose_cb(self, msg):
+        # Update timestamp whenever /robot_pose is active
+        self.last_pose_time = rospy.Time.now()
+        # Reset once we start getting valid messages again
+        if self.has_published:
+            rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
+            self.has_published = False
+
+    def update(self):
+        time_since_last = (rospy.Time.now() - self.last_pose_time).to_sec()
+
+        if time_since_last > self.timeout:
+            rospy.logwarn(f"[CheckRobotPose] No /robot_pose message for {time_since_last:.1f}s — returning FAILURE.")
+            now = rospy.Time.now().to_sec()
+
+            # ✅ Publish only once per failure or after republish_interval seconds
+            if (not self.has_published) or (now - self.last_publish_time > self.republish_interval):
+                last_valid_pos = self.c_goal.get_last_good_pose()
+                if last_valid_pos:
+                    try:
+                        pose_msg = PoseStamped()
+                        pose_msg.header.frame_id = "map"
+                        pose_msg.header.stamp = rospy.Time.now()
+
+                        pose_msg.pose.position.x = last_valid_pos["pose"]["position"]["x"]
+                        pose_msg.pose.position.y = last_valid_pos["pose"]["position"]["y"]
+                        pose_msg.pose.position.z = last_valid_pos["pose"]["position"]["z"]
+
+                        pose_msg.pose.orientation.x = last_valid_pos["pose"]["orientation"]["x"]
+                        pose_msg.pose.orientation.y = last_valid_pos["pose"]["orientation"]["y"]
+                        pose_msg.pose.orientation.z = last_valid_pos["pose"]["orientation"]["z"]
+                        pose_msg.pose.orientation.w = last_valid_pos["pose"]["orientation"]["w"]
+
+                        self.initial_pose_pub.publish(pose_msg)
+                        self.last_publish_time = now
+                        self.has_published = True
+                        rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
+                    except Exception as e:
+                        rospy.logwarn(f"[CheckRobotPose] Failed to publish last valid pose: {e}")
+                else:
+                    rospy.logwarn("[CheckRobotPose] No last valid pose found in history to publish.")
+
+            return pt.common.Status.FAILURE
+
+        else:
+            # Everything OK
+            return pt.common.Status.SUCCESS
+
+
+class check_ouster_points(pt.behaviour.Behaviour):
+    def __init__(self, timeout=2.0):
+        super(check_ouster_points, self).__init__("CheckOusterPoints")
+        self.timeout = timeout
+        self.last_cloud_time = rospy.Time.now()
+        self.sub = rospy.Subscriber("/ouster/points", PointCloud2, self.cloud_cb)
+
+    def cloud_cb(self, msg):
+        self.last_cloud_time = rospy.Time.now()
+
+    def update(self):
+        time_since_last = (rospy.Time.now() - self.last_cloud_time).to_sec()
+        if time_since_last > self.timeout:
+            rospy.logwarn(f"[CheckOusterPoints] No /ouster/points message for {time_since_last:.1f}s — returning FAILURE.")
+            return pt.common.Status.FAILURE
+        else:
+            # rospy.loginfo_throttle(5, "[CheckOusterPoints] /ouster/points messages active.")
+            return pt.common.Status.SUCCESS
+
 
 class goal_reached(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
@@ -215,100 +312,6 @@ class goal_reached(pt.behaviour.Behaviour):
         rospy.loginfo("[goal_reached] final goal not reached yet.")
         return pt.common.Status.FAILURE
 
-
-
-class check_localization(pt.behaviour.Behaviour):
-    def __init__(self, c_goal):
-        super(check_localization, self).__init__("CheckLocalization")
-        self.c_goal = c_goal
-        self.max_score = 0.5
-        self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
-
-    def update(self):
-        if self.c_goal.transform_probability is None:
-            rospy.logwarn("[CheckLocalization] No localization score received")
-            return pt.common.Status.RUNNING
-
-        if self.c_goal.transform_probability <= self.max_score:
-            rospy.loginfo(f"[CheckLocalization] Good localization score: {self.c_goal.transform_probability}")
-            
-            # Only publish to robot_pose when we have good localization
-            if self.c_goal.robot_pose:
-                # Convert quaternion to yaw for controller compatibility
-                pose_msg = PoseStamped()
-                pose_msg.header = self.c_goal.robot_pose.header
-                pose_msg.pose.position = self.c_goal.robot_pose.pose.position
-                
-                # Convert quaternion to yaw and store in orientation.z
-                yaw = self.quaternion_to_yaw(self.c_goal.robot_pose.pose.orientation)
-                pose_msg.pose.orientation.z = yaw
-                
-                self.robot_pose_pub.publish(pose_msg)
-                rospy.loginfo_throttle(5, "[CheckLocalization] Publishing valid pose to /robot_pose")
-            
-            return pt.common.Status.SUCCESS
-        else:
-            rospy.logwarn(f"[CheckLocalization] Poor localization score: {self.c_goal.transform_probability}")
-            return pt.common.Status.FAILURE
-
-
-class recover_localization(pt.behaviour.Behaviour):
-    def __init__(self, c_goal):
-        super(recover_localization, self).__init__("RecoverLocalization")
-        self.c_goal = c_goal
-        self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
-        self.initial_pose_pub = rospy.Publisher('/initial_pose', PoseStamped, queue_size=10)
-
-    def initialise(self):
-        """Reset when behavior starts"""
-        rospy.loginfo("[RecoverLocalization] Starting localization recovery")
-
-    def update(self):
-        # Get last good pose from history
-        last_good = self.c_goal.get_last_good_pose()
-        if not last_good:
-            rospy.logwarn("[RecoverLocalization] No good pose found in history")
-            return pt.common.Status.RUNNING
-
-        # Create PoseStamped message from last good pose
-        robot_pose = PoseStamped()
-        robot_pose.header.frame_id = "map"
-        robot_pose.header.stamp = rospy.Time.now()
-        robot_pose.pose.position.x = last_good["pose"]["position"]["x"]
-        robot_pose.pose.position.y = last_good["pose"]["position"]["y"]
-        robot_pose.pose.position.z = last_good["pose"]["position"]["z"]
-        
-        # Convert stored quaternion to yaw
-        orientation = last_good["pose"]["orientation"]
-        yaw = self.quaternion_to_yaw(orientation)
-        robot_pose.pose.orientation.z = yaw
-        
-        # Publish to robot_pose for other nodes to use
-        self.robot_pose_pub.publish(robot_pose)
-
-        # Also publish to initial_pose for AMCL/localization reset (with full quaternion)
-        initial_pose = PoseStamped()
-        initial_pose.header.frame_id = "map"
-        initial_pose.header.stamp = rospy.Time.now()
-        initial_pose.pose.position.x = last_good["pose"]["position"]["x"]
-        initial_pose.pose.position.y = last_good["pose"]["position"]["y"]
-        initial_pose.pose.position.z = last_good["pose"]["position"]["z"]
-        initial_pose.pose.orientation.x = orientation["x"]
-        initial_pose.pose.orientation.y = orientation["y"]
-        initial_pose.pose.orientation.z = orientation["z"]
-        initial_pose.pose.orientation.w = orientation["w"]
-        
-        self.initial_pose_pub.publish(initial_pose)
-
-        # rospy.loginfo_throttle(2, f"[RecoverLocalization] Publishing last good pose (score: {last_good['fitness_score']}) to robot_pose and initial_pose")
-
-        # Check if localization has improved
-        if self.c_goal.transform_probability is not None and self.c_goal.transform_probability <= 0.5:
-            rospy.loginfo("[RecoverLocalization] Localization recovered successfully!")
-            return pt.common.Status.SUCCESS
-
-        rospy.loginfo_throttle(2, f"[RecoverLocalization] Still recovering... current score: {self.c_goal.transform_probability}")
-        return pt.common.Status.RUNNING
 
 class global_path_exist(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
@@ -440,6 +443,101 @@ class control_planner(pt.behaviour.Behaviour):
         except rospy.ServiceException as e:
             rospy.logerr(f"[ControlPlanner] Service call failed: {e}")
             return pt.common.Status.FAILURE
+
+
+
+# class check_localization(pt.behaviour.Behaviour):
+#     def __init__(self, c_goal):
+#         super(check_localization, self).__init__("CheckLocalization")
+#         self.c_goal = c_goal
+#         self.max_score = 0.5
+#         self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
+
+#     def update(self):
+#         if self.c_goal.transform_probability is None:
+#             rospy.logwarn("[CheckLocalization] No localization score received")
+#             return pt.common.Status.RUNNING
+
+#         if self.c_goal.transform_probability <= self.max_score:
+#             rospy.loginfo(f"[CheckLocalization] Good localization score: {self.c_goal.transform_probability}")
+            
+#             # Only publish to robot_pose when we have good localization
+#             if self.c_goal.robot_pose:
+#                 # Convert quaternion to yaw for controller compatibility
+#                 pose_msg = PoseStamped()
+#                 pose_msg.header = self.c_goal.robot_pose.header
+#                 pose_msg.pose.position = self.c_goal.robot_pose.pose.position
+                
+#                 # Convert quaternion to yaw and store in orientation.z
+#                 yaw = self.quaternion_to_yaw(self.c_goal.robot_pose.pose.orientation)
+#                 pose_msg.pose.orientation.z = yaw
+                
+#                 self.robot_pose_pub.publish(pose_msg)
+#                 rospy.loginfo_throttle(5, "[CheckLocalization] Publishing valid pose to /robot_pose")
+            
+#             return pt.common.Status.SUCCESS
+#         else:
+#             rospy.logwarn(f"[CheckLocalization] Poor localization score: {self.c_goal.transform_probability}")
+#             return pt.common.Status.FAILURE
+
+
+# class recover_localization(pt.behaviour.Behaviour):
+#     def __init__(self, c_goal):
+#         super(recover_localization, self).__init__("RecoverLocalization")
+#         self.c_goal = c_goal
+#         self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
+#         self.initial_pose_pub = rospy.Publisher('/initial_pose', PoseStamped, queue_size=10)
+
+#     def initialise(self):
+#         """Reset when behavior starts"""
+#         rospy.loginfo("[RecoverLocalization] Starting localization recovery")
+
+#     def update(self):
+#         # Get last good pose from history
+#         last_good = self.c_goal.get_last_good_pose()
+#         if not last_good:
+#             rospy.logwarn("[RecoverLocalization] No good pose found in history")
+#             return pt.common.Status.RUNNING
+
+#         # Create PoseStamped message from last good pose
+#         robot_pose = PoseStamped()
+#         robot_pose.header.frame_id = "map"
+#         robot_pose.header.stamp = rospy.Time.now()
+#         robot_pose.pose.position.x = last_good["pose"]["position"]["x"]
+#         robot_pose.pose.position.y = last_good["pose"]["position"]["y"]
+#         robot_pose.pose.position.z = last_good["pose"]["position"]["z"]
+        
+#         # Convert stored quaternion to yaw
+#         orientation = last_good["pose"]["orientation"]
+#         yaw = self.quaternion_to_yaw(orientation)
+#         robot_pose.pose.orientation.z = yaw
+        
+#         # Publish to robot_pose for other nodes to use
+#         self.robot_pose_pub.publish(robot_pose)
+
+#         # Also publish to initial_pose for AMCL/localization reset (with full quaternion)
+#         initial_pose = PoseStamped()
+#         initial_pose.header.frame_id = "map"
+#         initial_pose.header.stamp = rospy.Time.now()
+#         initial_pose.pose.position.x = last_good["pose"]["position"]["x"]
+#         initial_pose.pose.position.y = last_good["pose"]["position"]["y"]
+#         initial_pose.pose.position.z = last_good["pose"]["position"]["z"]
+#         initial_pose.pose.orientation.x = orientation["x"]
+#         initial_pose.pose.orientation.y = orientation["y"]
+#         initial_pose.pose.orientation.z = orientation["z"]
+#         initial_pose.pose.orientation.w = orientation["w"]
+        
+#         self.initial_pose_pub.publish(initial_pose)
+
+#         # rospy.loginfo_throttle(2, f"[RecoverLocalization] Publishing last good pose (score: {last_good['fitness_score']}) to robot_pose and initial_pose")
+
+#         # Check if localization has improved
+#         if self.c_goal.transform_probability is not None and self.c_goal.transform_probability <= 0.5:
+#             rospy.loginfo("[RecoverLocalization] Localization recovered successfully!")
+#             return pt.common.Status.SUCCESS
+
+#         rospy.loginfo_throttle(2, f"[RecoverLocalization] Still recovering... current score: {self.c_goal.transform_probability}")
+#         return pt.common.Status.RUNNING
 
 
 if __name__ == "__main__":
