@@ -441,12 +441,18 @@ class control_planner(pt.behaviour.Behaviour):
             return pt.common.Status.FAILURE
 
         try:
+            
             resp = self.run_control_srv(False)  # False = not last goal
+            # rospy.sleep(999999)
+            rospy.loginfo("Recieved the response from service")
             if resp.status == 0:   # RUNNING
+                rospy.loginfo("Controller servic is running")
                 return pt.common.Status.RUNNING
             elif resp.status == 1: # SUCCESS
+                rospy.loginfo("Controller service returns success")
                 return pt.common.Status.SUCCESS
             else:                  # FAILURE
+                rospy.loginfo("Controller service returns Failure")
                 return pt.common.Status.FAILURE
         except rospy.ServiceException as e:
             rospy.logerr(f"[ControlPlanner] Service call failed: {e}")
