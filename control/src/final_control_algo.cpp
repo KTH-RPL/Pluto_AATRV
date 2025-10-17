@@ -628,7 +628,9 @@ bool PreviewController::run_control(bool is_last_goal) {
     else
         boundvel(linear_velocity_);
     // Evaluate DWA each cycle to compute best sample and max obstacle cost
-    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+    // MOVE DWA RESULT FROM HERE
+    // DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+    
     // ROS_INFO("DWA max obstacle cost = %f", dwa_result.obs_cost);
 
     // Hysteresis switching between PREVIEW and DWA
@@ -673,6 +675,9 @@ bool PreviewController::run_control(bool is_last_goal) {
     }
 
     if (!use_preview) {
+        // MOVE DWA RESULT TO HERE
+        DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+
         // Use DWA command
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
