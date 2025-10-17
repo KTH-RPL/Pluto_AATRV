@@ -6,7 +6,7 @@ import py_trees_ros as ptr
 import rospy
 import actionlib
 from rsequence import RSequence
-from geometry_msgs.msg import PoseArray, PoseStamped, Pose
+from geometry_msgs.msg import PoseArray, PoseStamped, Pose, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
 from std_msgs.msg import Float32
 
@@ -59,13 +59,18 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
             name="Goal Reached Fallback",
             children=[goal_reached(c_goal), s1]
         )
+        s2 = pt.composites.Sequence(
+            name="system check Sequence", 
+            children=[system_check, b1]
+        )
 
-        tree = RSequence(name="Main sequence", children=[system_check, b1])
+        tree = RSequence(name="Main sequence", children=[b1])
         super(M2BehaviourTree, self).__init__(tree)
 
         rospy.sleep(5)
         self.setup(timeout=10000)
         while not rospy.is_shutdown():
+            rospy.loginfo("Ticking the tree")
             self.tick_tock(0.1)  # 10Hz
 
 
@@ -75,7 +80,7 @@ class goal_robot_condition():
         self.robot_pose = None
         self.goals = None  
         self.get_global_path = None
-
+        self.has_published = False
         # Track goal index for multi-goal execution
         self.goal_index = 0
         self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
@@ -89,7 +94,7 @@ class goal_robot_condition():
         rospy.on_shutdown(self.save_last_pose_on_shutdown)
 
         # for localization condition 
-        self.transform_probability = None
+        # self.transform_probability = None
         self.pose_history_file = os.path.expanduser("~/robot_pose_history.json")
         os.makedirs(os.path.dirname(self.pose_history_file), exist_ok=True)
 
@@ -98,8 +103,8 @@ class goal_robot_condition():
         # self.localization_recovery_start_time = None  # Track recovery start time
         # self.max_recovery_time = 5.0  # Maximum 30 seconds for recovery
 
-    def transform_probability_cb(self, msg):
-        self.transform_probability = msg.data   
+    # def transform_probability_cb(self, msg):
+    #     self.transform_probability = msg.data   
         
     def ndt_pose_cb(self, msg):
         # self.robot_pose = msg
@@ -107,7 +112,7 @@ class goal_robot_condition():
         # if self.transform_probability is not None:
         pose_entry = {
             "timestamp": rospy.Time.now().to_sec(),
-            "fitness_score": self.transform_probability,
+            # "fitness_score": self.transform_probability,
             "pose": {
                 "position": {
                     "x": msg.pose.position.x,
@@ -139,7 +144,11 @@ class goal_robot_condition():
     
     def robot_pose_cb(self, msg):
         self.robot_pose = msg
-
+        self.last_pose_time = rospy.Time.now()
+        # Reset once we start getting valid messages again
+        if self.has_published:
+            rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
+            self.has_published = False
     
     def save_pose_history(self):
         try:
@@ -210,19 +219,11 @@ class check_robot_pose(pt.behaviour.Behaviour):
 
         self.last_pose_time = rospy.Time.now()
         self.last_publish_time = 0.0
-        self.has_published = False
 
         # ROS I/O
-        self.sub = rospy.Subscriber("/robot_pose", PoseStamped, self.pose_cb)
-        self.initial_pose_pub = rospy.Publisher("/initialpose", PoseStamped, queue_size=10)
+    
+        self.initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=10)
 
-    def pose_cb(self, msg):
-        # Update timestamp whenever /robot_pose is active
-        self.last_pose_time = rospy.Time.now()
-        # Reset once we start getting valid messages again
-        if self.has_published:
-            rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
-            self.has_published = False
 
     def update(self):
         time_since_last = (rospy.Time.now() - self.last_pose_time).to_sec()
@@ -232,26 +233,31 @@ class check_robot_pose(pt.behaviour.Behaviour):
             now = rospy.Time.now().to_sec()
 
             # ✅ Publish only once per failure or after republish_interval seconds
-            if (not self.has_published) or (now - self.last_publish_time > self.republish_interval):
+            if (not self.c_goal.has_published) or (now - self.last_publish_time > self.republish_interval):
                 last_valid_pos = self.c_goal.get_last_good_pose()
                 if last_valid_pos:
                     try:
-                        pose_msg = PoseStamped()
+                        pose_msg = PoseWithCovarianceStamped()
                         pose_msg.header.frame_id = "map"
                         pose_msg.header.stamp = rospy.Time.now()
 
-                        pose_msg.pose.position.x = last_valid_pos["pose"]["position"]["x"]
-                        pose_msg.pose.position.y = last_valid_pos["pose"]["position"]["y"]
-                        pose_msg.pose.position.z = last_valid_pos["pose"]["position"]["z"]
+                        pose_msg.pose.pose.position.x = last_valid_pos["pose"]["position"]["x"]
+                        pose_msg.pose.pose.position.y = last_valid_pos["pose"]["position"]["y"]
+                        pose_msg.pose.pose.position.z = last_valid_pos["pose"]["position"]["z"]
 
-                        pose_msg.pose.orientation.x = last_valid_pos["pose"]["orientation"]["x"]
-                        pose_msg.pose.orientation.y = last_valid_pos["pose"]["orientation"]["y"]
-                        pose_msg.pose.orientation.z = last_valid_pos["pose"]["orientation"]["z"]
-                        pose_msg.pose.orientation.w = last_valid_pos["pose"]["orientation"]["w"]
+                        pose_msg.pose.pose.orientation.x = last_valid_pos["pose"]["orientation"]["x"]
+                        pose_msg.pose.pose.orientation.y = last_valid_pos["pose"]["orientation"]["y"]
+                        pose_msg.pose.pose.orientation.z = last_valid_pos["pose"]["orientation"]["z"]
+                        pose_msg.pose.pose.orientation.w = last_valid_pos["pose"]["orientation"]["w"]
+
+                        # Set covariance matrix as 0.25 * identity
+                        pose_msg.pose.covariance = [0.25 if i % 7 == 0 else 0.0 for i in range(36)]  # faster without numpy
 
                         self.initial_pose_pub.publish(pose_msg)
+
+
                         self.last_publish_time = now
-                        self.has_published = True
+                        self.c_goal.has_published = True
                         rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
                     except Exception as e:
                         rospy.logwarn(f"[CheckRobotPose] Failed to publish last valid pose: {e}")
@@ -262,6 +268,7 @@ class check_robot_pose(pt.behaviour.Behaviour):
 
         else:
             # Everything OK
+            rospy.loginfo("[CheckRobotPose] /robot_pose messages active.")
             return pt.common.Status.SUCCESS
 
 
@@ -281,7 +288,7 @@ class check_ouster_points(pt.behaviour.Behaviour):
             rospy.logwarn(f"[CheckOusterPoints] No /ouster/points message for {time_since_last:.1f}s — returning FAILURE.")
             return pt.common.Status.FAILURE
         else:
-            # rospy.loginfo_throttle(5, "[CheckOusterPoints] /ouster/points messages active.")
+            rospy.loginfo("[CheckOusterPoints] /ouster/points messages active.")
             return pt.common.Status.SUCCESS
 
 
@@ -394,7 +401,7 @@ class global_path_client(pt.behaviour.Behaviour):
 
         if not self.sent:
             pluto_goal = PlanGlobalPathGoal()
-            pluto_goal.goal = self.c_goal.goals
+            pluto_goal.waypoints = self.c_goal.goals
             self.client.send_goal(pluto_goal, 
                                   done_cb=self.done_callback, 
                                   feedback_cb=self.feedback_callback)
@@ -424,6 +431,7 @@ class control_planner(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
         super(control_planner, self).__init__("Control")
         self.c_goal = c_goal
+        rospy.loginfo("Waiting for RunControl Service")
         rospy.wait_for_service('run_control')
         self.run_control_srv = rospy.ServiceProxy('run_control', RunControl)
 

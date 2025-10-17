@@ -39,7 +39,7 @@ preview_controller:
   # --- NEW: Density-based controller switching ---
   density_check_radius: 5.0                # [m] Radius to check for obstacles
   density_obstacle_thresh: 5.0            # [0-100] Cost value to count as obstacle
-  density_dwa_activation_thresh: 8.0      # [%] Switch PREVIEW -> DWA if density > this
+  density_dwa_activation_thresh: 8.0E10      # [%] Switch PREVIEW -> DWA if density > this
   density_preview_reactivation_thresh: 4.0  # [%] Switch DWA -> PREVIEW if density <= this
   
   # --- LEGACY: Cost-based switching (no longer used by default logic) ---

@@ -218,7 +218,7 @@ void NdtLocalizer::callback_pointcloud(
   static size_t skipping_publish_num = 0;
   if (
     iteration_num >= ndt_.getMaximumIterations() + 2 ||
-    ndt_.getFitnessScore() > 0.5) {
+    ndt_.getFitnessScore() > 0.7) {
     is_converged = false;
     ++skipping_publish_num;
     std::cout << "========================= Not Converged ==================================" << std::endl;

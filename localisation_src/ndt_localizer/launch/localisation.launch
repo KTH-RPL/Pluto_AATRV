@@ -3,8 +3,8 @@
     <arg name="bag_name" default="ndt_debug.bag" />
 
     <!-- Add ouster sensor luach file-->
-    <include file="$(find ouster_ros)/launch/sensor.launch">
-    </include>
+    <!-- <include file="$(find ouster_ros)/launch/sensor.launch">
+    </include> -->
     
     <!-- <include file="$(find ouster_ros)/launch/driver.launch">
           <arg name="sensor_hostname" value="os-992145001143.local"/>
