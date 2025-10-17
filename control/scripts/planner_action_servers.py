@@ -29,6 +29,12 @@ class GlobalPlannerActionServer:
 
         # Wait until the first pose is received
         rospy.loginfo("Waiting for the first robot pose to be received...")
+        
+        # # TO REMOVE: SIMULATE INITIAL ROBOT POSE
+        # global CURRENT_ROBOT_POSE
+        # CURRENT_ROBOT_POSE = PoseStamped()
+        # CURRENT_ROBOT_POSE.pose.position.x, CURRENT_ROBOT_POSE.pose.position.y = (147.096863, 79.56179)
+
         while CURRENT_ROBOT_POSE is None and not rospy.is_shutdown():
             try:
                 rospy.sleep(0.5)
@@ -58,10 +64,6 @@ class GlobalPlannerActionServer:
         
         # Find the nearest waypoint to the current robot pose
         robot_pos = CURRENT_ROBOT_POSE.pose.position
-
-        # TO REMOVE: SIMULATE INITIAL ROBOT POSE
-        robot_pos.x, robot_pos.y = (147.096863, 79.56179)
-
         waypoints = goal.waypoints.poses
         min_dist_sq = float('inf')
         start_index = 0
