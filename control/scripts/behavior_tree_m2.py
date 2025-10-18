@@ -236,7 +236,7 @@ class check_robot_pose(pt.behaviour.Behaviour):
             now = rospy.Time.now().to_sec()
 
             # ✅ Publish only once per failure or after republish_interval seconds
-            if (not self.c_goal.has_published) or (now - self.last_publish_time > self.republish_interval):
+            if (not self.c_goal.has_published) or (now - self.c_goal.last_publish_time > self.republish_interval):
                 last_valid_pos = self.c_goal.get_last_good_pose()
                 if last_valid_pos:
                     try:
@@ -282,7 +282,7 @@ class check_ouster_points(pt.behaviour.Behaviour):
         self.timeout = timeout
 
     def update(self):
-        time_since_last = (rospy.Time.now() - self.c_goal.last_cloud_time).to_sec()
+        time_since_last = (rospy.Time.now() - self.c_goal.last_ouster_time).to_sec()
         if time_since_last > self.timeout:
             rospy.logwarn(f"[CheckOusterPoints] No /ouster/points message for {time_since_last:.1f}s — returning FAILURE.")
             return pt.common.Status.FAILURE

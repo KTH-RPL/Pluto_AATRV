@@ -673,10 +673,10 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (!dwa_controller_ptr->costmap_received_) {
         use_preview = false;
     }
-
+    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
     if (!use_preview) {
         // MOVE DWA RESULT TO HERE
-        DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+        
 
         // Use DWA command
         v_ = dwa_result.best_v;
