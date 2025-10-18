@@ -8,6 +8,7 @@ NdtLocalizer::NdtLocalizer(ros::NodeHandle &nh, ros::NodeHandle &private_nh):nh_
   // Publishers
   sensor_aligned_pose_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("points_aligned", 10);
   ndt_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("ndt_pose", 10);
+  ndt_pose_odom_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("ndt_pose_odom", 10);
   exe_time_pub_ = nh_.advertise<std_msgs::Float32>("exe_time_ms", 10);
   transform_probability_pub_ = nh_.advertise<std_msgs::Float32>("transform_probability", 10);
   iteration_num_pub_ = nh_.advertise<std_msgs::Float32>("iteration_num", 10);
@@ -245,8 +246,14 @@ void NdtLocalizer::callback_pointcloud(
   result_pose_stamped_msg.header.frame_id = map_frame_;
   result_pose_stamped_msg.pose = result_pose_msg;
 
+  geometry_msgs::PoseStamped result_pose_odom_stamped_msg;
+  result_pose_odom_stamped_msg.header.stamp = sensor_ros_time;
+  result_pose_odom_stamped_msg.header.frame_id = "odom";
+  result_pose_odom_stamped_msg.pose = result_pose_msg;
+
   if (is_converged) {
     ndt_pose_pub_.publish(result_pose_stamped_msg);
+    ndt_pose_odom_pub_.publish(result_pose_odom_stamped_msg);
   }
 
   // publish tf(map frame to base frame)

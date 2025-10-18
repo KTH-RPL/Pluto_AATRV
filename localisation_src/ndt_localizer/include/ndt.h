@@ -47,6 +47,7 @@ private:
 
     ros::Publisher sensor_aligned_pose_pub_;
     ros::Publisher ndt_pose_pub_;
+    ros::Publisher ndt_pose_odom_pub_;
     ros::Publisher exe_time_pub_;
     ros::Publisher transform_probability_pub_;
     ros::Publisher iteration_num_pub_;
