@@ -251,7 +251,7 @@ class UVDetector:
             x_w = cos_theta * x_r + sin_theta * y_r + x_robot
             y_w = -sin_theta * x_r + cos_theta * y_r + y_robot
             self.box3Ds_world_frame.append({
-                'x': x_w, 'y': -y_w, 'z': box['z'],
+                'x': x_w, 'y': y_w, 'z': box['z'],
                 'x_width': box['x_width'], 'y_width': box['y_width'], 'z_width': box['z_width']
             })
         return self.box3Ds_world_frame
