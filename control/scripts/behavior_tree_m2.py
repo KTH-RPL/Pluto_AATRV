@@ -40,7 +40,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
         system_check = pt.composites.Sequence(
             name="System Check",
             children=[
-                check_ouster_points(timeout=1.0 ),     # Check LiDAR
+                check_ouster_points(c_goal,timeout=1.0 ),     # Check LiDAR
                 check_robot_pose(c_goal,timeout=1.0, republish_interval=5.0)   # Check robot pose
             ]
         )
@@ -64,7 +64,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
             children=[system_check, b1]
         )
 
-        tree = RSequence(name="Main sequence", children=[b1])
+        tree = RSequence(name="Main sequence", children=[s2])
         super(M2BehaviourTree, self).__init__(tree)
 
         rospy.sleep(5)
@@ -85,6 +85,11 @@ class goal_robot_condition():
         self.goal_index = 0
         self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
 
+        self.last_ouster_time = rospy.Time.now()
+        self.last_pose_time = rospy.Time.now()
+        self.last_publish_time = 0.0
+
+        rospy.Subscriber("/ouster/points", PointCloud2, self.ouster_cb)
         rospy.Subscriber("/ndt_pose", PoseStamped, self.ndt_pose_cb)
         rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
         rospy.Subscriber("/waypoints", Path, self.waypoints_callback)
@@ -105,7 +110,10 @@ class goal_robot_condition():
 
     # def transform_probability_cb(self, msg):
     #     self.transform_probability = msg.data   
-        
+
+    def ouster_cb(self, msg):
+        self.last_ouster_time = rospy.Time.now()
+
     def ndt_pose_cb(self, msg):
         # self.robot_pose = msg
 
@@ -217,16 +225,11 @@ class check_robot_pose(pt.behaviour.Behaviour):
         self.timeout = timeout
         self.republish_interval = republish_interval
 
-        self.last_pose_time = rospy.Time.now()
-        self.last_publish_time = 0.0
-
-        # ROS I/O
-    
         self.initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=10)
 
 
     def update(self):
-        time_since_last = (rospy.Time.now() - self.last_pose_time).to_sec()
+        time_since_last = (rospy.Time.now() - self.c_goal.last_pose_time).to_sec()
 
         if time_since_last > self.timeout:
             rospy.logwarn(f"[CheckRobotPose] No /robot_pose message for {time_since_last:.1f}s — returning FAILURE.")
@@ -256,7 +259,7 @@ class check_robot_pose(pt.behaviour.Behaviour):
                         self.initial_pose_pub.publish(pose_msg)
 
 
-                        self.last_publish_time = now
+                        self.c_goal.last_publish_time = now
                         self.c_goal.has_published = True
                         rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
                     except Exception as e:
@@ -268,27 +271,23 @@ class check_robot_pose(pt.behaviour.Behaviour):
 
         else:
             # Everything OK
-            rospy.loginfo("[CheckRobotPose] /robot_pose messages active.")
+            rospy.loginfo_throttle(10, "[CheckRobotPose] /robot_pose messages active.")
             return pt.common.Status.SUCCESS
 
 
 class check_ouster_points(pt.behaviour.Behaviour):
-    def __init__(self, timeout=2.0):
+    def __init__(self,c_goal,  timeout=2.0):
         super(check_ouster_points, self).__init__("CheckOusterPoints")
+        self.c_goal = c_goal
         self.timeout = timeout
-        self.last_cloud_time = rospy.Time.now()
-        self.sub = rospy.Subscriber("/ouster/points", PointCloud2, self.cloud_cb)
-
-    def cloud_cb(self, msg):
-        self.last_cloud_time = rospy.Time.now()
 
     def update(self):
-        time_since_last = (rospy.Time.now() - self.last_cloud_time).to_sec()
+        time_since_last = (rospy.Time.now() - self.c_goal.last_cloud_time).to_sec()
         if time_since_last > self.timeout:
             rospy.logwarn(f"[CheckOusterPoints] No /ouster/points message for {time_since_last:.1f}s — returning FAILURE.")
             return pt.common.Status.FAILURE
         else:
-            rospy.loginfo("[CheckOusterPoints] /ouster/points messages active.")
+            rospy.loginfo_throttle(10, "[CheckOusterPoints] /ouster/points messages active.")
             return pt.common.Status.SUCCESS
 
 
@@ -458,6 +457,282 @@ class control_planner(pt.behaviour.Behaviour):
             rospy.logerr(f"[ControlPlanner] Service call failed: {e}")
             return pt.common.Status.FAILURE
 
+
+
+
+# class goal_robot_condition():
+#     def __init__(self):
+#         self.current_goal = None
+#         self.robot_pose = None
+#         self.goals = None  
+#         self.get_global_path = None
+#         self.has_published = False
+        
+#         # Mission state tracking
+#         self.mission_phase = "OUTBOUND"  # OUTBOUND or RETURN
+#         self.start_pose = None  # Store starting position
+#         self.original_goals = None  # Store original waypoints
+#         self.original_global_path = None  # Store the original global path
+        
+#         # Track goal index for multi-goal execution
+#         self.goal_index = 0
+#         self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
+
+#         self.last_ouster_time = rospy.Time.now()
+#         self.last_pose_time = rospy.Time.now()
+#         self.last_publish_time = 0.0
+
+#         rospy.Subscriber("/ouster/points", PointCloud2, self.ouster_cb)
+#         rospy.Subscriber("/ndt_pose", PoseStamped, self.ndt_pose_cb)
+#         rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
+#         rospy.Subscriber("/waypoints", Path, self.waypoints_callback)
+
+#         # Save pose on shutdown
+#         rospy.on_shutdown(self.save_last_pose_on_shutdown)
+
+#         self.pose_history_file = os.path.expanduser("~/robot_pose_history.json")
+#         os.makedirs(os.path.dirname(self.pose_history_file), exist_ok=True)
+
+#         self.valid_poses = []   # Store history of valid poses with scores
+#         self.last_good_pose = None  # To store the last pose with good score
+
+#     def ouster_cb(self, msg):
+#         self.last_ouster_time = rospy.Time.now()
+
+#     def ndt_pose_cb(self, msg):
+#         pose_entry = {
+#             "timestamp": rospy.Time.now().to_sec(),
+#             "pose": {
+#                 "position": {
+#                     "x": msg.pose.position.x,
+#                     "y": msg.pose.position.y,
+#                     "z": msg.pose.position.z
+#                 },
+#                 "orientation": {
+#                     "x": msg.pose.orientation.x,
+#                     "y": msg.pose.orientation.y,
+#                     "z": msg.pose.orientation.z,
+#                     "w": msg.pose.orientation.w
+#                 }
+#             }
+#         }
+        
+#         self.valid_poses.append(pose_entry)
+#         self.last_good_pose = pose_entry    
+
+#         # Keep only last 1000 poses
+#         if len(self.valid_poses) > 1000:
+#             self.valid_poses = self.valid_poses[-1000:]
+            
+#         self.save_pose_history()
+    
+#     def robot_pose_cb(self, msg):
+#         self.robot_pose = msg
+#         self.last_pose_time = rospy.Time.now()
+        
+#         # Save start pose when we first get robot pose and don't have one yet
+#         if self.start_pose is None and msg.pose.position.x != 0 and msg.pose.position.y != 0:
+#             self.start_pose = msg
+#             rospy.loginfo(f"[Mission] Start position saved: ({self.start_pose.pose.position.x:.2f}, {self.start_pose.pose.position.y:.2f})")
+            
+#         # Reset once we start getting valid messages again
+#         if self.has_published:
+#             rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
+#             self.has_published = False
+    
+#     def save_pose_history(self):
+#         try:
+#             with open(self.pose_history_file, 'w') as f:
+#                 json.dump({"valid_poses": self.valid_poses}, f, indent=4)
+#         except Exception as e:
+#             rospy.logwarn(f"Failed to save pose history: {e}")
+
+#     def get_last_good_pose(self):
+#         """Get the most recent pose."""
+#         if self.last_good_pose:
+#             return self.last_good_pose
+        
+#         for pose in reversed(self.valid_poses):
+#             return pose
+#         return None
+    
+#     def prepare_return_mission(self):
+#         """Prepare return path by reversing the global path"""
+#         if self.original_global_path is None or len(self.original_global_path) == 0:
+#             rospy.logwarn("[Mission] No global path available to reverse!")
+#             return False
+            
+#         # Reverse the global path for return trip
+#         return_path = list(reversed(self.original_global_path))
+#         self.get_global_path = return_path
+#         self.mission_phase = "RETURN"
+#         self.goal_index = 0
+        
+#         rospy.loginfo(f"[Mission] Return path prepared by reversing global path. {len(return_path)} waypoints.")
+#         return True
+    
+#     def save_global_path(self, path_poses):
+#         """Store the original global path for later reversal"""
+#         self.original_global_path = path_poses
+#         rospy.loginfo(f"[Mission] Original global path saved with {len(path_poses)} poses")
+    
+#     def save_last_pose_on_shutdown(self):
+#         rospy.loginfo("Saving last robot pose on shutdown.")
+#         self.save_pose_history()
+
+#     def waypoints_callback(self, msg):
+#         if not self.goals:   
+#             pose_array = PoseArray()
+#             pose_array.header.frame_id = msg.header.frame_id
+#             pose_array.header.stamp = rospy.Time.now()
+
+#             for ps in msg.poses:
+#                 pose = Pose()
+#                 pose.position = ps.pose.position
+#                 pose.orientation = ps.pose.orientation
+#                 pose_array.poses.append(pose)
+            
+#             self.goals = pose_array
+#             self.original_goals = pose_array  # Store original for potential reset
+#             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals for OUTBOUND mission.")
+
+
+# class global_path_client(pt.behaviour.Behaviour):
+#     def __init__(self, c_goal):
+#         super(global_path_client, self).__init__("SendGoals")
+#         self.client = actionlib.SimpleActionClient("plan_global_path", PlanGlobalPathAction)
+#         self.sent = False        
+#         self.c_goal = c_goal
+#         self.path_pub_ = rospy.Publisher("/global_path", Path, queue_size=1, latch=True)
+
+#     def initialise(self):
+#         self.sent = False
+#         self.c_goal.get_global_path = None
+#         rospy.loginfo("[Behaviour Tree] Waiting for the 'plan_global_path' action server...")
+#         self.client.wait_for_server()
+#         rospy.loginfo("[Behaviour Tree] Action server found")
+        
+#     def feedback_callback(self, feedback):
+#         try:
+#             rospy.loginfo(
+#                 "Received feedback: Path segment with %d poses has been planned.",
+#                 len(feedback.current_segment.poses)
+#             )
+#         except Exception as e:
+#             rospy.logwarn("Feedback callback failed: %s", str(e))
+
+#     def done_callback(self, status, result):
+#         if status == actionlib.GoalStatus.SUCCEEDED:
+#             rospy.loginfo(f"[{self.c_goal.mission_phase}] Action finished successfully!")
+#             rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
+
+#             # Store the original global path
+#             if result.global_plan.poses:
+#                 self.c_goal.save_global_path(result.global_plan.poses)
+#                 self.c_goal.get_global_path = result.global_plan.poses
+#                 self.path_pub_.publish(result.global_plan)
+#                 rospy.loginfo(f"Published the {self.c_goal.mission_phase} path to 'global_path'.")
+#             else:
+#                 rospy.logwarn("Received an empty final path. Not publishing.")
+
+#         elif status == actionlib.GoalStatus.PREEMPTED:
+#             rospy.logwarn("Action was preempted by a new goal.")
+#         else:
+#             rospy.logerr("Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
+
+#     def update(self):
+#         # For RETURN phase, we don't need to call the planner - just use reversed path
+#         if self.c_goal.mission_phase == "RETURN" and self.c_goal.get_global_path:
+#             # Just publish the reversed path that's already stored
+#             return_path = Path()
+#             return_path.header.frame_id = "map"
+#             return_path.header.stamp = rospy.Time.now()
+#             return_path.poses = [pose for pose in self.c_goal.get_global_path]  # Already reversed
+            
+#             self.path_pub_.publish(return_path)
+#             rospy.loginfo(f"[RETURN] Published reversed path with {len(return_path.poses)} poses")
+#             return pt.common.Status.SUCCESS
+
+#         # For OUTBOUND phase, use the normal planner
+#         if self.c_goal.get_global_path:
+#             return pt.common.Status.SUCCESS
+
+#         if not self.sent:
+#             pluto_goal = PlanGlobalPathGoal()
+#             pluto_goal.waypoints = self.c_goal.goals
+#             self.client.send_goal(pluto_goal, 
+#                                   done_cb=self.done_callback, 
+#                                   feedback_cb=self.feedback_callback)
+#             self.sent = True
+
+#             goal_pose = PoseStamped()
+#             goal_pose.header.stamp = rospy.Time.now()
+#             goal_pose.pose = self.c_goal.goals.poses[self.c_goal.goal_index]
+#             self.c_goal.goal_pose_pub.publish(goal_pose)
+            
+#             rospy.loginfo(f"[OUTBOUND] Sent outbound goal: ({goal_pose.pose.position.x:.2f}, {goal_pose.pose.position.y:.2f})")
+
+#         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
+#             result = self.client.get_result()
+#             if result:
+#                 self.c_goal.get_global_path = result.global_plan.poses
+#             self.sent = False
+#             return pt.common.Status.SUCCESS
+
+#         elif self.client.get_state() in [actionlib.GoalStatus.ABORTED, actionlib.GoalStatus.REJECTED]:
+#             rospy.logwarn(f"[OUTBOUND] Goal execution failed.")
+#             return pt.common.Status.FAILURE
+
+#         return pt.common.Status.RUNNING
+
+
+# class goal_reached(pt.behaviour.Behaviour):
+#     def __init__(self, c_goal):
+#         super(goal_reached, self).__init__("Goal_reached")
+#         self.c_goal = c_goal
+#         self.finished = False
+
+#     def update(self):
+#         if self.finished:
+#             rospy.loginfo("[goal_reached] Complete mission finished - both outbound and return.")
+#             return pt.common.Status.SUCCESS
+        
+#         if not self.c_goal.goals or not self.c_goal.robot_pose:
+#             rospy.logerr(f"Either goal is empty or not getting robot_pose:{self.c_goal.goals, self.c_goal.robot_pose}")
+#             return pt.common.Status.RUNNING
+
+#         # Get current target based on mission phase
+#         if self.c_goal.mission_phase == "OUTBOUND":
+#             target_goal = self.c_goal.goals.poses[-1]  # Final goal of outbound
+#             target_description = "outbound"
+#         else:  # RETURN phase
+#             if self.c_goal.start_pose:
+#                 target_goal = self.c_goal.start_pose.pose  # Start position
+#             else:
+#                 rospy.logerr("[goal_reached] No start pose available for return!")
+#                 return pt.common.Status.FAILURE
+#             target_description = "return"
+
+#         current_pose = self.c_goal.robot_pose.pose.position
+#         distance = ((current_pose.x - target_goal.position.x) ** 2 + 
+#                     (current_pose.y - target_goal.position.y) ** 2) ** 0.5
+
+#         if distance < 0.6:
+#             if self.c_goal.mission_phase == "OUTBOUND":
+#                 rospy.loginfo("[goal_reached] OUTBOUND goal reached! Preparing return mission...")
+#                 # Switch to return mission using reversed path
+#                 if self.c_goal.prepare_return_mission():
+#                     return pt.common.Status.FAILURE  # Continue mission
+#                 else:
+#                     rospy.logerr("[goal_reached] Failed to prepare return mission!")
+#                     return pt.common.Status.FAILURE
+#             else:  # RETURN phase
+#                 rospy.loginfo("[goal_reached] RETURN goal reached! Mission complete!")
+#                 self.finished = True
+#                 return pt.common.Status.SUCCESS
+                
+#         rospy.loginfo_throttle(5, f"[goal_reached] {self.c_goal.mission_phase} {target_description} goal not reached yet. Distance: {distance:.2f}m")
+#         return pt.common.Status.FAILURE
 
 
 # class check_localization(pt.behaviour.Behaviour):
