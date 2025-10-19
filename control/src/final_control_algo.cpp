@@ -1240,7 +1240,7 @@ double dwa_controller::calc_lookahead_heading_cost() {
     //     temp_look_ahead_idx++;
     // }
 
-    temp_look_ahead_idx = -1; // Use Goal Point as lookahead
+    // temp_look_ahead_idx = -1; // Use Goal Point as lookahead
 
     temp_lookahead_x = (*current_path_)[temp_look_ahead_idx].x;
     temp_lookahead_y = (*current_path_)[temp_look_ahead_idx].y;
@@ -1287,12 +1287,16 @@ double dwa_controller::calc_lookahead_cost() {
     double traj_y = last_point[1];
     int current_target = *target_idx_;
 
-    if (current_target < *max_path_points_) {
-        double tx = (*current_path_)[current_target].x;
-        double ty = (*current_path_)[current_target].y;
-        return std::hypot(traj_x - tx, traj_y - ty);
-    }
-    return 0.0;
+    // if (current_target < *max_path_points_) {
+    //     double tx = (*current_path_)[current_target].x;
+    //     double ty = (*current_path_)[current_target].y;
+    //     return std::hypot(traj_x - tx, traj_y - ty);
+    // }
+    // return 0.0;
+
+    // Use the dynamic lookahead point's coordinates, which were
+    // set by calc_lookahead_heading_cost()
+    return std::hypot(traj_x - temp_lookahead_x, traj_y - temp_lookahead_y);
 }
 
 // Tries to maintain required vel
@@ -1364,7 +1368,11 @@ double dwa_controller::calc_away_from_obstacle_cost() {
 
     // Return max exponential cost instead of average
     // return max_exp_cost;
+    if (item == 0) return 0.0;
     return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
+   
+    // // Return the average exponential cost
+    // return total_exp_cost / item;
 }
 
 // Main cost calc
