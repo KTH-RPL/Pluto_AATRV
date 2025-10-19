@@ -673,16 +673,25 @@ bool PreviewController::run_control(bool is_last_goal) {
     if (!dwa_controller_ptr->costmap_received_) {
         use_preview = false;
     }
-    DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
+
+    // Publish the lookahead point based on active controller
+    geometry_msgs::PoseStamped look_pose;
+    double lookahead_theta;
+
     if (!use_preview) {
         // MOVE DWA RESULT TO HERE
-        
+        DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
 
         // Use DWA command
         v_ = dwa_result.best_v;
         omega_ = dwa_result.best_omega;
         active_controller_ = "DWA";
         ROS_INFO("Controller: DWA | v=%.3f, omega=%.3f", v_, omega_);
+
+        look_pose.pose.position.x = dwa_result.lookahead_x;
+        look_pose.pose.position.y = dwa_result.lookahead_y;
+        look_pose.pose.position.z = 0.0;
+        lookahead_theta = dwa_result.lookahead_theta;
     } else {
         // Use preview controller
         if (!bounded_vel)
@@ -712,6 +721,12 @@ bool PreviewController::run_control(bool is_last_goal) {
         // ------------------------------
         active_controller_ = "PREVIEW";
         ROS_INFO("Controller: PREVIEW | v=%.3f, omega=%.3f", v_, omega_);
+
+        // Use Preview Controller's lookahead point
+        look_pose.pose.position.x = current_path[targetid].x;
+        look_pose.pose.position.y = current_path[targetid].y;
+        look_pose.pose.position.z = 0.0;
+        lookahead_theta = current_path[targetid].theta;
     }
 
     if(!bounded_omega)
@@ -736,22 +751,22 @@ bool PreviewController::run_control(bool is_last_goal) {
     current_omega_pub_.publish(omega_msg);
     // ---------------------------------------
 
-    // Publish the lookahead point based on active controller
-    geometry_msgs::PoseStamped look_pose;
-    double lookahead_theta;
-    if (active_controller_ == "DWA") {
-        // Use DWA's lookahead point with orientation from the path
-        look_pose.pose.position.x = dwa_result.lookahead_x;
-        look_pose.pose.position.y = dwa_result.lookahead_y;
-        look_pose.pose.position.z = 0.0;
-        lookahead_theta = dwa_result.lookahead_theta;
-    } else {
-        // Use Preview Controller's lookahead point
-        look_pose.pose.position.x = current_path[targetid].x;
-        look_pose.pose.position.y = current_path[targetid].y;
-        look_pose.pose.position.z = 0.0;
-        lookahead_theta = current_path[targetid].theta;
-    }
+    // // Publish the lookahead point based on active controller
+    // geometry_msgs::PoseStamped look_pose;
+    // double lookahead_theta;
+    // if (active_controller_ == "DWA") {
+    //     // Use DWA's lookahead point with orientation from the path
+    //     look_pose.pose.position.x = dwa_result.lookahead_x;
+    //     look_pose.pose.position.y = dwa_result.lookahead_y;
+    //     look_pose.pose.position.z = 0.0;
+    //     lookahead_theta = dwa_result.lookahead_theta;
+    // } else {
+    //     // Use Preview Controller's lookahead point
+    //     look_pose.pose.position.x = current_path[targetid].x;
+    //     look_pose.pose.position.y = current_path[targetid].y;
+    //     look_pose.pose.position.z = 0.0;
+    //     lookahead_theta = current_path[targetid].theta;
+    // }
     // Convert yaw angle to quaternion
     look_pose.pose.orientation.x = 0.0;
     look_pose.pose.orientation.y = 0.0;
