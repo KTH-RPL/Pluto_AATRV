@@ -68,3 +68,4 @@ dwa_controller:
   speed_ref_bias: 0.0
   occdist_scale: 0.0
   away_bias: 2.0
+  lookahead_jump: 5

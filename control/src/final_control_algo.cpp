@@ -973,6 +973,8 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     // Number of samples for velocity and omega between dynamic window
     nh_.param("dwa_controller/vx_samples", vx_samples_, 3);
     nh_.param("dwa_controller/omega_samples", omega_samples_, 5);
+    nh_.param("dwa_controller/lookahead_jump", lookahead_jump_, 5);
+
     
     // Same params above
     nh_.param("preview_controller/vel_acc", vel_acc_, 0.5);
@@ -1224,16 +1226,19 @@ double dwa_controller::calc_lookahead_heading_cost() {
     }
 
     int temp_look_ahead_idx = current_target;
+    int max_index = (*current_path_).size() - 1;
     
     // Same chkside function as in PreviewController but check for the last traj point
     while(temp_look_ahead_idx + 1 < (*current_path_).size() && (chkside((*current_path_)[temp_look_ahead_idx].x, (*current_path_)[temp_look_ahead_idx].y, (*current_path_)[temp_look_ahead_idx].theta, final_x, final_y))) {
-        temp_look_ahead_idx++;
+        temp_look_ahead_idx = std::min(temp_look_ahead_idx + lookahead_jump_, max_index);
     }
 
     // Calculate lookahead point based on clearance distance, if too far, then increase the lookahead index
     while(temp_look_ahead_idx + 1 < (*current_path_).size() && (std::hypot((*current_path_)[temp_look_ahead_idx].x - final_x, (*current_path_)[temp_look_ahead_idx].y - final_y) > lookahead_distance_)) {
-        temp_look_ahead_idx++;
+        temp_look_ahead_idx = std::min(temp_look_ahead_idx + lookahead_jump_, max_index);
     }
+
+
 
     // Check if lookahead point is too close to an obstacle
     // while(temp_look_ahead_idx +1 < (*current_path_).size() && (query_cost_at_world((*current_path_)[temp_look_ahead_idx].x, (*current_path_)[temp_look_ahead_idx].y, final_x, final_y, ) > lookahead_obstacle_cost_thresh_)) {
