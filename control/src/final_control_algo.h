@@ -204,6 +204,7 @@ class dwa_controller {
         double vel_acc_;
         double omega_acc_;
         double dt_dwa_;
+        int lookahead_jump_;
         double max_domega_;
         double robot_radius_;
         double collision_robot_coeff;

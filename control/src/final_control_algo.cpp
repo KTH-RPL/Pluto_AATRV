@@ -1374,10 +1374,10 @@ double dwa_controller::calc_away_from_obstacle_cost() {
     // Return max exponential cost instead of average
     // return max_exp_cost;
     if (item == 0) return 0.0;
-    return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
+    // return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
    
     // // Return the average exponential cost
-    // return total_exp_cost / item;
+    return total_exp_cost / item;
 }
 
 // Main cost calc
