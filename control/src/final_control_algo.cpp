@@ -1076,8 +1076,9 @@ bool dwa_controller::worldToCostmap(double wx, double wy, int& mx, int& my, doub
     // double rel_y = -dx * sin(robot_yaw) + dy * cos(robot_yaw); // left axis
 
     // Get origin and resolution of costmap 
-    double origin_x = occ_grid_.info.origin.position.x;
-    double origin_y = occ_grid_.info.origin.position.y;
+    int static_offset_origin = 10;
+    double origin_x = occ_grid_.info.origin.position.x + static_offset_origin;
+    double origin_y = occ_grid_.info.origin.position.y + static_offset_origin;
     double resolution = occ_grid_.info.resolution;
 
     // // Convert to costmap indices
