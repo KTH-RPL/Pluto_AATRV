@@ -114,6 +114,8 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     nh_.param("preview_controller/use_start_top", use_start_stop, true);
 
+    nh_.param("preview_controller/lookahead_obstacle_buffer", lookahead_obstacle_buffer_, 1.0); // e.g., 1.0 meter
+
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
     omega_acc_bound = omega_acc_ * dt_;
@@ -585,6 +587,31 @@ bool PreviewController::run_control(bool is_last_goal) {
                 continue;
             }
             break;
+        }
+        double buffer_dist_travelled = 0.0;
+        int buffered_idx = targetid; // Start from the safe point
+
+        while (buffered_idx + 1 < max_path_points && buffer_dist_travelled < lookahead_obstacle_buffer_) {
+            double next_lx = current_path[buffered_idx + 1].x;
+            double next_ly = current_path[buffered_idx + 1].y;
+            double next_c = dwa_controller_ptr->query_cost_at_world(next_lx, next_ly, robot_x, robot_y, robot_theta);
+            
+            if (next_c >= 50.0) {
+                // The buffer zone hit another obstacle. Stop here (at the current safe 'buffered_idx').
+                break;
+            }
+            // If it's safe, add the distance and advance
+            double segment_dist = distancecalc(
+                current_path[buffered_idx].x, current_path[buffered_idx].y,
+                current_path[buffered_idx + 1].x, current_path[buffered_idx + 1].y
+            );
+            buffer_dist_travelled += segment_dist;
+            buffered_idx++;
+        }
+
+        if (targetid != buffered_idx) {
+             ROS_INFO("Lookahead advanced from %d to %d to clear obstacle with buffer.", targetid, buffered_idx);
+             targetid = buffered_idx;
         }
     }
 
