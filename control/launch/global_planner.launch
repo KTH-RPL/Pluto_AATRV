@@ -1,4 +1,4 @@
 <launch>
     <node pkg="robot_controller" type="planner_action_servers.py" name="global_planner_as_node" output="screen" />
-    <!-- <node pkg="robot_controller" type="planner_test_action_client.py" name="global_planner_client_node" output="screen" /> -->
+    <node pkg="robot_controller" type="planner_test_action_client.py" name="global_planner_client_node" output="screen" />
 </launch>

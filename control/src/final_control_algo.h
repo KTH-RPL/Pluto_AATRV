@@ -245,5 +245,5 @@ class dwa_controller {
         double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
 
         // <<< NEW: Helper function for global world -> map conversion
-        bool worldToMap(double wx, double wy, int& mx, int& my) const;
+        bool worldToMap(double wx, double wy, int& mx, int& my);
 };

@@ -1076,9 +1076,8 @@ bool dwa_controller::worldToCostmap(double wx, double wy, int& mx, int& my, doub
     // double rel_y = -dx * sin(robot_yaw) + dy * cos(robot_yaw); // left axis
 
     // Get origin and resolution of costmap 
-    int static_offset_origin = 10;
-    double origin_x = occ_grid_.info.origin.position.x + static_offset_origin;
-    double origin_y = occ_grid_.info.origin.position.y + static_offset_origin;
+    double origin_x = occ_grid_.info.origin.position.x;
+    double origin_y = occ_grid_.info.origin.position.y;
     double resolution = occ_grid_.info.resolution;
 
     // // Convert to costmap indices
@@ -1102,17 +1101,24 @@ uint8_t dwa_controller::getCostmapCost(int mx, int my) {
     return 100;
 }
 
-bool dwa_controller::worldToMap(double wx, double wy, int& mx, int& my) const {
+
+bool dwa_controller::worldToMap(double wx, double wy, int& mx, int& my) {
     if (!costmap_received_) {
         return false;
     }
 
-    const auto& origin = occ_grid_.info.origin.position;
-    const double resolution = occ_grid_.info.resolution;
+    // Get origin and resolution of costmap 
+    double origin_x = occ_grid_.info.origin.position.x;
+    double origin_y = occ_grid_.info.origin.position.y;
+    double resolution = occ_grid_.info.resolution;
+
 
     // This handles the case where the costmap origin is not at (0,0)
-    mx = static_cast<int>((wx - origin.x) / resolution);
-    my = static_cast<int>((wy - origin.y) / resolution);
+    mx = static_cast<int>((wx - origin_x) / resolution);
+    my = static_cast<int>((wy - origin_y) / resolution);
+
+    ROS_INFO_THROTTLE(1.0, "Obstacle density - Robot Curr Location (%i, %i)", mx, my);
+
 
     // Check if within costmap bounds
     return (mx >= 0 && mx < static_cast<int>(occ_grid_.info.width) &&
@@ -1375,10 +1381,10 @@ double dwa_controller::calc_away_from_obstacle_cost() {
     // Return max exponential cost instead of average
     // return max_exp_cost;
     if (item == 0) return 0.0;
-    // return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
+    return total_exp_cost; // Use average instead of max, so that we can choose path with less obstacle within the trajectory points
    
     // // Return the average exponential cost
-    return total_exp_cost / item;
+    // return total_exp_cost / item;
 }
 
 // Main cost calc
