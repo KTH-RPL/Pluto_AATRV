@@ -28,7 +28,7 @@ if args.verbose:
 
 # --------------- Global Variables ---------------------
 max_dist_per_point = 1.5
-robot_radius = 1.0
+robot_radius = 1.2
 sim_obs_gl = None
 
 
