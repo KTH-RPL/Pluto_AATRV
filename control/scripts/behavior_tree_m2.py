@@ -27,31 +27,13 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
 
         c_goal = goal_robot_condition()
 
-        # Create localization recovery fallback
-        # localization_fallback = pt.composites.Selector(
-        #     name="Localization Recovery Fallback",
-        #     children=[
-        #         check_localization(c_goal),  # First try: check if localization is good
-        #         recover_localization(c_goal)  # Fallback: recover localization
-        #     ]
-        # )
-
-        # --- New system health checks ---
-        system_check = pt.composites.Sequence(
-            name="System Check",
-            children=[
-                check_ouster_points(c_goal,timeout=1.0 ),     # Check LiDAR
-                check_localization(c_goal)   # Check robot pose
-            ]
-        )
-
         b0 = pt.composites.Selector(
             name="Global Planner Fallback",
             children=[global_path_exist(c_goal), global_path_client(c_goal)]
         )
 
-        s1 = pt.composites.Sequence(
-            name="Pluto Sequence", 
+        s1 = RSequence(
+            name="Planner and Control Sequence", 
             children=[b0, control_planner(c_goal)]
         )
 
@@ -59,12 +41,8 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
             name="Goal Reached Fallback",
             children=[goal_reached(c_goal), s1]
         )
-        s2 = pt.composites.Sequence(
-            name="system check Sequence", 
-            children=[system_check, b1]
-        )
 
-        tree = RSequence(name="Main sequence", children=[s2])
+        tree = RSequence(name="Main sequence", children=[check_ouster_points(c_goal,timeout=1.0 ), check_localization(c_goal), b1])
         super(M2BehaviourTree, self).__init__(tree)
 
         rospy.sleep(5)
@@ -246,23 +224,23 @@ class check_localization(pt.behaviour.Behaviour):
 
                     self.initial_pose_pub.publish(pose_msg)
                     self.c_goal.has_published = True
-                    rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
+                    rospy.loginfo("[CheckLocalization] Published last valid pose to /initialpose for relocalization.")
                 except Exception as e:
-                    rospy.logwarn(f"[CheckRobotPose] Failed to publish last valid pose: {e}")
+                    rospy.logwarn(f"[CheckLocalization] Failed to publish last valid pose: {e}")
             else:
-                rospy.logwarn("[CheckRobotPose] No last valid pose found in history to publish.")
+                rospy.logwarn("[CheckLocalization] No last valid pose found in history to publish.")
 
             return pt.common.Status.FAILURE
 
         else:
             # Everything OK
             self.c_goal.has_published = False
-            rospy.loginfo_throttle(10, "[CheckRobotPose] /robot_pose messages active.")
+            rospy.loginfo("[CheckLocalization] Localization is converging")
             return pt.common.Status.SUCCESS
 
 
 class check_ouster_points(pt.behaviour.Behaviour):
-    def __init__(self,c_goal,  timeout=2.0):
+    def __init__(self,c_goal,  timeout = 2.0):
         super(check_ouster_points, self).__init__("CheckOusterPoints")
         self.c_goal = c_goal
         self.timeout = timeout
@@ -273,7 +251,7 @@ class check_ouster_points(pt.behaviour.Behaviour):
             rospy.logwarn(f"[CheckOusterPoints] No /ouster/points message for {time_since_last:.1f}s — returning FAILURE.")
             return pt.common.Status.FAILURE
         else:
-            rospy.loginfo_throttle(10, "[CheckOusterPoints] /ouster/points messages active.")
+            rospy.loginfo("[CheckOusterPoints] /ouster/points messages active.")
             return pt.common.Status.SUCCESS
 
 
@@ -301,7 +279,7 @@ class goal_reached(pt.behaviour.Behaviour):
             rospy.loginfo("[goal_reached] Final goal reached.")
             self.finished = True
             return pt.common.Status.SUCCESS
-        rospy.loginfo("[goal_reached] final goal not reached yet.")
+        rospy.loginfo("[goal_reached] Final goal not reached yet.")
         return pt.common.Status.FAILURE
 
 
@@ -312,8 +290,10 @@ class global_path_exist(pt.behaviour.Behaviour):
 
     def update(self):
         if self.c_goal.get_global_path:
+            rospy.loginfo("Global path already exists ")
             return pt.common.Status.SUCCESS
         else:
+            rospy.loginfo("Global path does not exist -> going to global path client")
             return pt.common.Status.FAILURE
 
 
@@ -328,14 +308,14 @@ class global_path_client(pt.behaviour.Behaviour):
     def initialise(self):
         self.sent = False
         self.c_goal.get_global_path = None
-        rospy.loginfo("[Behaviour Tree] Waiting for the 'plan_global_path' action server...")
+        rospy.loginfo("[global_path_client] Waiting for the 'plan_global_path' action server...")
         self.client.wait_for_server()
-        rospy.loginfo("[Behaviour Tree] Action server found")
+        rospy.loginfo("[global_path_client] Action server found")
         
     def feedback_callback(self, feedback):
         try:
             rospy.loginfo(
-                "Received feedback: Path segment with %d poses has been planned.",
+                "[global_path_client] Received feedback: Path segment with %d poses has been planned.",
                 len(feedback.current_segment.poses)
             )
             # try: 
@@ -359,16 +339,16 @@ class global_path_client(pt.behaviour.Behaviour):
 
     def done_callback(self, status, result):
         if status == actionlib.GoalStatus.SUCCEEDED:
-            rospy.loginfo("Action finished successfully!")
-            rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
+            rospy.loginfo("[global_path_client] Action finished successfully!")
+            rospy.loginfo("[global_path_client] Final global path contains %d poses.", len(result.global_plan.poses))
 
             # Publish the received path to the 'global_path' topic
             if result.global_plan.poses:
                 # The 'result.global_plan' is already a nav_msgs/Path message, so we can publish it directly.
                 self.path_pub_.publish(result.global_plan)
-                rospy.loginfo("Published the final path to 'global_path'.")
+                rospy.loginfo(" [global_path_client] Published the final path to 'global_path'.")
             else:
-                rospy.logwarn("Received an empty final path. Not publishing.")
+                rospy.logwarn("[global_path_client] Received an empty final path. Not publishing.")
 
             # try:
             #     plt.close('all')
@@ -376,12 +356,13 @@ class global_path_client(pt.behaviour.Behaviour):
             # except Exception as e:
             #     rospy.logwarn("Visualization failed in done_callback: %s", str(e))
         elif status == actionlib.GoalStatus.PREEMPTED:
-            rospy.logwarn("Action was preempted by a new goal.")
+            rospy.logwarn("[global_path_client] Action was preempted by a new goal.")
         else:
-            rospy.logerr("Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
+            rospy.logerr("[global_path_client] Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
 
     def update(self):
         if self.c_goal.get_global_path:
+            rospy.loginfo("[global_path_client] Got the global Path")
             return pt.common.Status.SUCCESS
 
         if not self.sent:
@@ -396,17 +377,18 @@ class global_path_client(pt.behaviour.Behaviour):
             goal_pose.header.stamp = rospy.Time.now()
             goal_pose.pose = self.c_goal.goals.poses[self.c_goal.goal_index]
             self.c_goal.goal_pose_pub.publish(goal_pose)
-            rospy.loginfo(f"[MultiGoalClient] Sent goal {self.c_goal.goal_index + 1}/{len(self.c_goal.goals.poses)}")
+            rospy.loginfo(f"[global_path_client] Sent goal {self.c_goal.goal_index + 1}/{len(self.c_goal.goals.poses)}")
 
         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
             result = self.client.get_result()
             if result:
                 self.c_goal.get_global_path = result.global_plan.poses
             self.sent = False
+            rospy.loginfo("[global_path_client] planner returns success")
             return pt.common.Status.SUCCESS
 
         elif self.client.get_state() in [actionlib.GoalStatus.ABORTED, actionlib.GoalStatus.REJECTED]:
-            rospy.logwarn("[MultiGoalClient] Goal execution failed.")
+            rospy.logwarn("[global_path_client] Goal execution failed.")
             return pt.common.Status.FAILURE
 
         return pt.common.Status.RUNNING
@@ -414,35 +396,41 @@ class global_path_client(pt.behaviour.Behaviour):
 
 class control_planner(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
-        super(control_planner, self).__init__("Control")
+        super(control_planner, self).__init__("ControlPlanner")
         self.c_goal = c_goal
-        rospy.loginfo("Waiting for RunControl Service")
-        rospy.wait_for_service('run_control')
-        self.run_control_srv = rospy.ServiceProxy('run_control', RunControl)
-
-    def update(self):
-        if not self.c_goal.get_global_path:
-            rospy.logwarn("[ControlPlanner] No global path, control not running")
-            return pt.common.Status.FAILURE
-
+           
+    def initialise(self):
+        """Called when the behavior first becomes RUNNING"""
         try:
+            rospy.loginfo("Waiting for RunControl Service")
+            rospy.wait_for_service('run_control', timeout=5.0)
+            self.run_control_srv = rospy.ServiceProxy('run_control', RunControl)
             
+            rospy.loginfo("RunControl service connected successfully")
+        except rospy.ROSException:
+            rospy.logerr("RunControl service not available within timeout")
+
+    def update(self):    
+        try:
             resp = self.run_control_srv(False)  # False = not last goal
-            # rospy.sleep(999999)
-            rospy.loginfo("Recieved the response from service")
+            rospy.loginfo("Received the response from service")
+            
             if resp.status == 0:   # RUNNING
-                rospy.loginfo("Controller servic is running")
+                rospy.loginfo("Controller service is running")
                 return pt.common.Status.RUNNING
             elif resp.status == 1: # SUCCESS
                 rospy.loginfo("Controller service returns success")
                 return pt.common.Status.SUCCESS
             else:                  # FAILURE
-                rospy.loginfo("Controller service returns Failure")
+                rospy.logwarn("Controller service returns Failure")
                 return pt.common.Status.FAILURE
+                
         except rospy.ServiceException as e:
             rospy.logerr(f"[ControlPlanner] Service call failed: {e}")
+            # Mark client as not ready for re-initialization
+            self.control_client_ready = False
             return pt.common.Status.FAILURE
-
+        
 
 
 ###  Below commented code will also returned the robot back to its home position where it started
@@ -456,7 +444,7 @@ class control_planner(pt.behaviour.Behaviour):
 #         self.has_published = False
         
 #         # Mission state tracking
-#         self.mission_phase = "OUTBOUND"  # OUTBOUND or RETURN
+#         self.mission_phase = "GOAL"  # GOAL or HOME
 #         self.start_pose = None  # Store starting position
 #         self.original_goals = None  # Store original waypoints
 #         self.original_global_path = None  # Store the original global path
@@ -551,7 +539,7 @@ class control_planner(pt.behaviour.Behaviour):
 #         # Reverse the global path for return trip
 #         return_path = list(reversed(self.original_global_path))
 #         self.get_global_path = return_path
-#         self.mission_phase = "RETURN"
+#         self.mission_phase = "HOME"
 #         self.goal_index = 0
         
 #         rospy.loginfo(f"[Mission] Return path prepared by reversing global path. {len(return_path)} waypoints.")
@@ -580,7 +568,7 @@ class control_planner(pt.behaviour.Behaviour):
             
 #             self.goals = pose_array
 #             self.original_goals = pose_array  # Store original for potential reset
-#             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals for OUTBOUND mission.")
+#             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals for GOAL mission.")
 
 
 # class global_path_client(pt.behaviour.Behaviour):
@@ -594,9 +582,9 @@ class control_planner(pt.behaviour.Behaviour):
 #     def initialise(self):
 #         self.sent = False
 #         self.c_goal.get_global_path = None
-#         rospy.loginfo("[Behaviour Tree] Waiting for the 'plan_global_path' action server...")
+#         rospy.loginfo("[global_path_client] Waiting for the 'plan_global_path' action server...")
 #         self.client.wait_for_server()
-#         rospy.loginfo("[Behaviour Tree] Action server found")
+#         rospy.loginfo("[global_path_client] Action server found")
         
 #     def feedback_callback(self, feedback):
 #         try:
@@ -605,30 +593,30 @@ class control_planner(pt.behaviour.Behaviour):
 #                 len(feedback.current_segment.poses)
 #             )
 #         except Exception as e:
-#             rospy.logwarn("Feedback callback failed: %s", str(e))
+#             rospy.logwarn(" [global_path_client] Feedback callback failed: %s", str(e))
 
 #     def done_callback(self, status, result):
 #         if status == actionlib.GoalStatus.SUCCEEDED:
-#             rospy.loginfo(f"[{self.c_goal.mission_phase}] Action finished successfully!")
-#             rospy.loginfo("Final global path contains %d poses.", len(result.global_plan.poses))
+#             rospy.loginfo(f"[global_path_client] [{self.c_goal.mission_phase}] Action finished successfully!")
+#             rospy.loginfo("[global_path_client] Final global path contains %d poses.", len(result.global_plan.poses))
 
 #             # Store the original global path
 #             if result.global_plan.poses:
 #                 self.c_goal.save_global_path(result.global_plan.poses)
 #                 self.c_goal.get_global_path = result.global_plan.poses
 #                 self.path_pub_.publish(result.global_plan)
-#                 rospy.loginfo(f"Published the {self.c_goal.mission_phase} path to 'global_path'.")
+#                 rospy.loginfo(f"[global_path_client] Published the {self.c_goal.mission_phase} path to 'global_path'.")
 #             else:
-#                 rospy.logwarn("Received an empty final path. Not publishing.")
+#                 rospy.logwarn("[global_path_client] Received an empty final path. Not publishing.")
 
 #         elif status == actionlib.GoalStatus.PREEMPTED:
-#             rospy.logwarn("Action was preempted by a new goal.")
+#             rospy.logwarn("[global_path_client] Action was preempted by a new goal.")
 #         else:
-#             rospy.logerr("Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
+#             rospy.logerr("[global_path_client] Action failed with status code: %s", actionlib.GoalStatus.to_string(status))
 
 #     def update(self):
-#         # For RETURN phase, we don't need to call the planner - just use reversed path
-#         if self.c_goal.mission_phase == "RETURN" and self.c_goal.get_global_path:
+#         # For HOME phase, we don't need to call the planner - just use reversed path
+#         if self.c_goal.mission_phase == "HOME" and self.c_goal.get_global_path:
 #             # Just publish the reversed path that's already stored
 #             return_path = Path()
 #             return_path.header.frame_id = "map"
@@ -636,10 +624,10 @@ class control_planner(pt.behaviour.Behaviour):
 #             return_path.poses = [pose for pose in self.c_goal.get_global_path]  # Already reversed
             
 #             self.path_pub_.publish(return_path)
-#             rospy.loginfo(f"[RETURN] Published reversed path with {len(return_path.poses)} poses")
+#             rospy.loginfo(f"[global_path_client] [HOME] Published reversed path with {len(return_path.poses)} poses")
 #             return pt.common.Status.SUCCESS
 
-#         # For OUTBOUND phase, use the normal planner
+#         # For GOAL phase, use the normal planner
 #         if self.c_goal.get_global_path:
 #             return pt.common.Status.SUCCESS
 
@@ -656,7 +644,7 @@ class control_planner(pt.behaviour.Behaviour):
 #             goal_pose.pose = self.c_goal.goals.poses[self.c_goal.goal_index]
 #             self.c_goal.goal_pose_pub.publish(goal_pose)
             
-#             rospy.loginfo(f"[OUTBOUND] Sent outbound goal: ({goal_pose.pose.position.x:.2f}, {goal_pose.pose.position.y:.2f})")
+#             rospy.loginfo(f"[GOAL] Sent GOAL goal: ({goal_pose.pose.position.x:.2f}, {goal_pose.pose.position.y:.2f})")
 
 #         if self.client.get_state() == actionlib.GoalStatus.SUCCEEDED:
 #             result = self.client.get_result()
@@ -666,7 +654,7 @@ class control_planner(pt.behaviour.Behaviour):
 #             return pt.common.Status.SUCCESS
 
 #         elif self.client.get_state() in [actionlib.GoalStatus.ABORTED, actionlib.GoalStatus.REJECTED]:
-#             rospy.logwarn(f"[OUTBOUND] Goal execution failed.")
+#             rospy.logwarn(f"[GOAL] Goal execution failed.")
 #             return pt.common.Status.FAILURE
 
 #         return pt.common.Status.RUNNING
@@ -680,7 +668,7 @@ class control_planner(pt.behaviour.Behaviour):
 
 #     def update(self):
 #         if self.finished:
-#             rospy.loginfo("[goal_reached] Complete mission finished - both outbound and return.")
+#             rospy.loginfo("[goal_reached] Complete mission finished - both GOAL and return.")
 #             return pt.common.Status.SUCCESS
         
 #         if not self.c_goal.goals or not self.c_goal.robot_pose:
@@ -688,10 +676,10 @@ class control_planner(pt.behaviour.Behaviour):
 #             return pt.common.Status.RUNNING
 
 #         # Get current target based on mission phase
-#         if self.c_goal.mission_phase == "OUTBOUND":
-#             target_goal = self.c_goal.goals.poses[-1]  # Final goal of outbound
-#             target_description = "outbound"
-#         else:  # RETURN phase
+#         if self.c_goal.mission_phase == "GOAL":
+#             target_goal = self.c_goal.goals.poses[-1]  # Final goal of GOAL
+#             target_description = "GOAL"
+#         else:  # HOME phase
 #             if self.c_goal.start_pose:
 #                 target_goal = self.c_goal.start_pose.pose  # Start position
 #             else:
@@ -704,16 +692,16 @@ class control_planner(pt.behaviour.Behaviour):
 #                     (current_pose.y - target_goal.position.y) ** 2) ** 0.5
 
 #         if distance < 0.6:
-#             if self.c_goal.mission_phase == "OUTBOUND":
-#                 rospy.loginfo("[goal_reached] OUTBOUND goal reached! Preparing return mission...")
+#             if self.c_goal.mission_phase == "GOAL":
+#                 rospy.loginfo("[goal_reached] GOAL goal reached! Preparing return mission...")
 #                 # Switch to return mission using reversed path
 #                 if self.c_goal.prepare_return_mission():
 #                     return pt.common.Status.FAILURE  # Continue mission
 #                 else:
 #                     rospy.logerr("[goal_reached] Failed to prepare return mission!")
 #                     return pt.common.Status.FAILURE
-#             else:  # RETURN phase
-#                 rospy.loginfo("[goal_reached] RETURN goal reached! Mission complete!")
+#             else:  # HOME phase
+#                 rospy.loginfo("[goal_reached] HOME goal reached! Mission complete!")
 #                 self.finished = True
 #                 return pt.common.Status.SUCCESS
                 
