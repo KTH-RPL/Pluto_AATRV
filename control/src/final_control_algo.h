@@ -164,6 +164,12 @@ class PreviewController {
         bool initial_pose_received_;
         bool path_generated_;
         ros::Timer control_timer_;
+        double lookahead_obstacle_buffer_;
+        int lookahead_jump_;
+
+        int control_loop_counter_;
+        double prev_v_for_gains_;
+        int gain_recalculation_frequency_;
 
         // <<< NEW: Parameters for density-based controller switching
         double density_check_radius_;
@@ -245,5 +251,5 @@ class dwa_controller {
         double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
 
         // <<< NEW: Helper function for global world -> map conversion
-        bool worldToMap(double wx, double wy, int& mx, int& my) const;
+        bool worldToMap(double wx, double wy, int& mx, int& my);
 };
