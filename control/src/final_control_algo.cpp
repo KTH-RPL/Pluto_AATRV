@@ -118,7 +118,7 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
 
     nh_.param("preview_controller/lookahead_obstacle_buffer", lookahead_obstacle_buffer_, 1.0); // e.g., 1.0 meter
     nh_.param("preview_controller/lookahead_jump", lookahead_jump_, 3);
-    nh_.param("preview_controller/gain_recalculation_frequency", gain_recalculation_frequency_, 10);
+    nh_.param("preview_controller/gain_recalculation_frequency", gain_recalculation_frequency_, 1);
 
 
     // Calculate the velocity and omega acceleration bounds for timestep
@@ -573,33 +573,41 @@ bool PreviewController::run_control(bool is_last_goal) {
     );
 
     if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
+
+        bool obstacle_was_skipped = false; // Flag to track if we found an obstacle
+
         // This loop finds the first valid point that is:
         // 1. In front of the robot (chkside)
         // 2. Far enough away (lookahead_distance_)
         // 3. Not in a lethal obstacle
+
         while (targetid + 1 < max_path_points) {
 
             // Condition 1: Is the point behind the robot?
             if (chkside(current_path[targetid].theta)) {
-                targetid++; // Advance and check the next point
+                targetid++;
                 continue;
             }
 
             // Condition 2: Is the point too close?
             double dist_to_target = distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y);
             if (dist_to_target < lookahead_distance_) {
-                targetid++; // Advance and check the next point
+                targetid++; 
                 continue;
             }
 
             // Condition 3: Is the point in an obstacle?
+            // This check only runs if Conditions 1 & 2 are false (optimized)
             double lx = current_path[targetid].x;
             double ly = current_path[targetid].y;
             double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y, robot_theta);
+            
             if (c >= 50.0) {
+                // Only set the flag if an obstacle is the reason for skipping
+                obstacle_was_skipped = true; 
+                
                 ROS_INFO_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
                 
-                // Use the fast "jump" optimization
                 targetid += lookahead_jump_; 
                 
                 if (targetid >= max_path_points) {
@@ -610,32 +618,33 @@ bool PreviewController::run_control(bool is_last_goal) {
             break;
         }
 
-        
-        double buffer_dist_travelled = 0.0;
-        int buffered_idx = targetid; // Start from the safe point
+        if (obstacle_was_skipped) {         
+            double buffer_dist_travelled = 0.0;
+            int buffered_idx = targetid; // Start from the safe point
 
-        while (buffered_idx + 1 < max_path_points && buffer_dist_travelled < lookahead_obstacle_buffer_) {
-            double next_lx = current_path[buffered_idx + 1].x;
-            double next_ly = current_path[buffered_idx + 1].y;
-            double next_c = dwa_controller_ptr->query_cost_at_world(next_lx, next_ly, robot_x, robot_y, robot_theta);
-            
-            if (next_c >= 50.0) {
-                // The buffer zone hit another obstacle. Stop here.
-                break;
+            while (buffered_idx + 1 < max_path_points && buffer_dist_travelled < lookahead_obstacle_buffer_) {
+                double next_lx = current_path[buffered_idx + 1].x;
+                double next_ly = current_path[buffered_idx + 1].y;
+                double next_c = dwa_controller_ptr->query_cost_at_world(next_lx, next_ly, robot_x, robot_y, robot_theta);
+                
+                if (next_c >= 50.0) {
+                    // The buffer zone hit another obstacle. Stop here.
+                    break;
+                }
+
+                double segment_dist = distancecalc(
+                    current_path[buffered_idx].x, current_path[buffered_idx].y,
+                    current_path[buffered_idx + 1].x, current_path[buffered_idx + 1].y
+                );
+                buffer_dist_travelled += segment_dist;
+                buffered_idx++;
             }
-
-            double segment_dist = distancecalc(
-                current_path[buffered_idx].x, current_path[buffered_idx].y,
-                current_path[buffered_idx + 1].x, current_path[buffered_idx + 1].y
-            );
-            buffer_dist_travelled += segment_dist;
-            buffered_idx++;
-        }
-        
-        // Final update
-        if (targetid != buffered_idx) {
-             ROS_INFO("Lookahead advanced from %d to %d to clear obstacle with buffer.", targetid, buffered_idx);
-             targetid = buffered_idx;
+            
+            // Final update
+            if (targetid != buffered_idx) {
+                ROS_INFO("Lookahead advanced from %d to %d to clear obstacle with buffer.", targetid, buffered_idx);
+                targetid = buffered_idx;
+            }
         }
 
     } else {
@@ -950,7 +959,7 @@ void PreviewController::compute_control(double cross_track_error, double heading
     }
     
     ROS_INFO(" Theta error: %f, Omega: %f, ey: %f", heading_error, omega_, cross_track_error);
-    
+
     control_loop_counter_++;
 }
 
