@@ -18,7 +18,9 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     : linear_velocity_(v), dt_(dt), preview_steps_(preview_steps), 
       prev_ey_(0), prev_etheta_(0), prev_omega_(0), nh_(), targetid(0),
       initial_pose_received_(false), path_generated_(false), initial_alignment_(false),
-      dwa_controller_ptr(nullptr)
+      dwa_controller_ptr(nullptr),
+      control_loop_counter_(0), 
+      prev_v_for_gains_(-1.0)
 {
     robot_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/atrv/cmd_vel", 10);
     lookahead_point_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("lookahead_point", 10);
@@ -115,7 +117,8 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     nh_.param("preview_controller/use_start_top", use_start_stop, true);
 
     nh_.param("preview_controller/lookahead_obstacle_buffer", lookahead_obstacle_buffer_, 1.0); // e.g., 1.0 meter
-    nh_.param("preview_controller/lookahead_jump", lookahead_jump_, 2);
+    nh_.param("preview_controller/lookahead_jump", lookahead_jump_, 3);
+    nh_.param("preview_controller/gain_recalculation_frequency", gain_recalculation_frequency_, 10);
 
 
     // Calculate the velocity and omega acceleration bounds for timestep
@@ -924,7 +927,17 @@ void PreviewController::compute_control(double cross_track_error, double heading
 
     Eigen::VectorXd curv_vec = Eigen::Map<Eigen::VectorXd>(preview_curv.data(), preview_steps_ + 1);
     
-    calcGains();
+    // Recalculate gains only if the velocity has changed significantly OR
+    // after a certain number of loops have passed.
+    bool should_recalculate_gains = 
+        (std::abs(v_ - prev_v_for_gains_) > 1e-4) || 
+        (control_loop_counter_ % gain_recalculation_frequency_ == 0);
+
+    if (should_recalculate_gains) {
+        ROS_INFO_THROTTLE(1.0, "Recalculating preview gains (v=%.2f).", v_);
+        calcGains();
+        prev_v_for_gains_ = v_; // Store the velocity used for this calculation
+    }
 
     double u_fb = -(Kb_ * x_state)(0);
     double u_ff = -(Kf_ * curv_vec)(0);
@@ -937,6 +950,8 @@ void PreviewController::compute_control(double cross_track_error, double heading
     }
     
     ROS_INFO(" Theta error: %f, Omega: %f, ey: %f", heading_error, omega_, cross_track_error);
+    
+    control_loop_counter_++;
 }
 
 // Stop the robot

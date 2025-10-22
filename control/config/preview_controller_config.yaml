@@ -47,7 +47,8 @@ preview_controller:
   preview_reactivation_cost_thresh: 5.0
 
   lookahead_obstacle_buffer: 1.0 # [m] min distance of lookahead point to the obstacle 
-  lookahead_jump: 2
+  lookahead_jump: 3
+  gain_recalculation_frequency: 10
   
 dwa_controller:
   # Prediction and sampling

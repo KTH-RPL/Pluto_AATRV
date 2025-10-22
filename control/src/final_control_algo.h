@@ -167,6 +167,10 @@ class PreviewController {
         double lookahead_obstacle_buffer_;
         int lookahead_jump_;
 
+        int control_loop_counter_;
+        double prev_v_for_gains_;
+        int gain_recalculation_frequency_;
+
         // <<< NEW: Parameters for density-based controller switching
         double density_check_radius_;
         double density_obstacle_thresh_;
