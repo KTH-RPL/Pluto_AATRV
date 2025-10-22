@@ -8,7 +8,7 @@ import actionlib
 from rsequence import RSequence
 from geometry_msgs.msg import PoseArray, PoseStamped, Pose, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Bool
 
 from robot_controller.msg import PlanGlobalPathAction, PlanGlobalPathGoal
 from robot_controller.srv import RunControl
@@ -41,7 +41,7 @@ class M2BehaviourTree(ptr.trees.BehaviourTree):
             name="System Check",
             children=[
                 check_ouster_points(c_goal,timeout=1.0 ),     # Check LiDAR
-                check_robot_pose(c_goal,timeout=1.0, republish_interval=5.0)   # Check robot pose
+                check_localization(c_goal)   # Check robot pose
             ]
         )
 
@@ -86,9 +86,9 @@ class goal_robot_condition():
         self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
 
         self.last_ouster_time = rospy.Time.now()
-        self.last_pose_time = rospy.Time.now()
-        self.last_publish_time = 0.0
+        self.is_converged = None
 
+        rospy.Subscriber("/is_converged", Bool, self.is_converged_cb)
         rospy.Subscriber("/ouster/points", PointCloud2, self.ouster_cb)
         rospy.Subscriber("/ndt_pose", PoseStamped, self.ndt_pose_cb)
         rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
@@ -110,6 +110,9 @@ class goal_robot_condition():
 
     # def transform_probability_cb(self, msg):
     #     self.transform_probability = msg.data   
+
+    def is_converged_cb(self,msg):
+        self.is_converged = msg.data
 
     def ouster_cb(self, msg):
         self.last_ouster_time = rospy.Time.now()
@@ -152,11 +155,6 @@ class goal_robot_condition():
     
     def robot_pose_cb(self, msg):
         self.robot_pose = msg
-        self.last_pose_time = rospy.Time.now()
-        # Reset once we start getting valid messages again
-        if self.has_published:
-            rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
-            self.has_published = False
     
     def save_pose_history(self):
         try:
@@ -218,59 +216,47 @@ class goal_robot_condition():
             self.goals = pose_array
             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals.")
 
-class check_robot_pose(pt.behaviour.Behaviour):
-    def __init__(self, c_goal, timeout=2.0, republish_interval=10.0):
-        super(check_robot_pose, self).__init__("CheckRobotPose")
+
+class check_localization(pt.behaviour.Behaviour):
+    def __init__(self, c_goal):
+        super(check_localization, self).__init__("CheckLocalization")
         self.c_goal = c_goal
-        self.timeout = timeout
-        self.republish_interval = republish_interval
-
         self.initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=10)
-
-
+    
     def update(self):
-        time_since_last = (rospy.Time.now() - self.c_goal.last_pose_time).to_sec()
+        if not self.c_goal.is_converged:
+            last_valid_pos = self.c_goal.get_last_good_pose()
+            if not self.c_goal.has_published and last_valid_pos:
+                try:
+                    pose_msg = PoseWithCovarianceStamped()
+                    pose_msg.header.frame_id = "map"
+                    pose_msg.header.stamp = rospy.Time.now()
 
-        if time_since_last > self.timeout:
-            rospy.logwarn(f"[CheckRobotPose] No /robot_pose message for {time_since_last:.1f}s — returning FAILURE.")
-            now = rospy.Time.now().to_sec()
+                    pose_msg.pose.pose.position.x = last_valid_pos["pose"]["position"]["x"]
+                    pose_msg.pose.pose.position.y = last_valid_pos["pose"]["position"]["y"]
+                    pose_msg.pose.pose.position.z = last_valid_pos["pose"]["position"]["z"]
 
-            # ✅ Publish only once per failure or after republish_interval seconds
-            if (not self.c_goal.has_published) or (now - self.c_goal.last_publish_time > self.republish_interval):
-                last_valid_pos = self.c_goal.get_last_good_pose()
-                if last_valid_pos:
-                    try:
-                        pose_msg = PoseWithCovarianceStamped()
-                        pose_msg.header.frame_id = "map"
-                        pose_msg.header.stamp = rospy.Time.now()
+                    pose_msg.pose.pose.orientation.x = last_valid_pos["pose"]["orientation"]["x"]
+                    pose_msg.pose.pose.orientation.y = last_valid_pos["pose"]["orientation"]["y"]
+                    pose_msg.pose.pose.orientation.z = last_valid_pos["pose"]["orientation"]["z"]
+                    pose_msg.pose.pose.orientation.w = last_valid_pos["pose"]["orientation"]["w"]
 
-                        pose_msg.pose.pose.position.x = last_valid_pos["pose"]["position"]["x"]
-                        pose_msg.pose.pose.position.y = last_valid_pos["pose"]["position"]["y"]
-                        pose_msg.pose.pose.position.z = last_valid_pos["pose"]["position"]["z"]
+                    # Set covariance matrix as 0.25 * identity
+                    pose_msg.pose.covariance = [0.25 if i % 7 == 0 else 0.0 for i in range(36)]  # faster without numpy
 
-                        pose_msg.pose.pose.orientation.x = last_valid_pos["pose"]["orientation"]["x"]
-                        pose_msg.pose.pose.orientation.y = last_valid_pos["pose"]["orientation"]["y"]
-                        pose_msg.pose.pose.orientation.z = last_valid_pos["pose"]["orientation"]["z"]
-                        pose_msg.pose.pose.orientation.w = last_valid_pos["pose"]["orientation"]["w"]
-
-                        # Set covariance matrix as 0.25 * identity
-                        pose_msg.pose.covariance = [0.25 if i % 7 == 0 else 0.0 for i in range(36)]  # faster without numpy
-
-                        self.initial_pose_pub.publish(pose_msg)
-
-
-                        self.c_goal.last_publish_time = now
-                        self.c_goal.has_published = True
-                        rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
-                    except Exception as e:
-                        rospy.logwarn(f"[CheckRobotPose] Failed to publish last valid pose: {e}")
-                else:
-                    rospy.logwarn("[CheckRobotPose] No last valid pose found in history to publish.")
+                    self.initial_pose_pub.publish(pose_msg)
+                    self.c_goal.has_published = True
+                    rospy.loginfo("[CheckRobotPose] Published last valid pose to /initialpose for relocalization.")
+                except Exception as e:
+                    rospy.logwarn(f"[CheckRobotPose] Failed to publish last valid pose: {e}")
+            else:
+                rospy.logwarn("[CheckRobotPose] No last valid pose found in history to publish.")
 
             return pt.common.Status.FAILURE
 
         else:
             # Everything OK
+            self.c_goal.has_published = False
             rospy.loginfo_throttle(10, "[CheckRobotPose] /robot_pose messages active.")
             return pt.common.Status.SUCCESS
 
@@ -459,6 +445,7 @@ class control_planner(pt.behaviour.Behaviour):
 
 
 
+###  Below commented code will also returned the robot back to its home position where it started
 
 # class goal_robot_condition():
 #     def __init__(self):
@@ -479,9 +466,9 @@ class control_planner(pt.behaviour.Behaviour):
 #         self.goal_pose_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
 
 #         self.last_ouster_time = rospy.Time.now()
-#         self.last_pose_time = rospy.Time.now()
-#         self.last_publish_time = 0.0
+#         self.is_converged = None
 
+#         rospy.Subscriber("/is_converged", Bool, self.is_converged_cb)
 #         rospy.Subscriber("/ouster/points", PointCloud2, self.ouster_cb)
 #         rospy.Subscriber("/ndt_pose", PoseStamped, self.ndt_pose_cb)
 #         rospy.Subscriber("/robot_pose", PoseStamped, self.robot_pose_cb)
@@ -498,6 +485,9 @@ class control_planner(pt.behaviour.Behaviour):
 
 #     def ouster_cb(self, msg):
 #         self.last_ouster_time = rospy.Time.now()
+    
+#     def is_converged_cb(self,msg):
+#         self.is_converged = msg.data
 
 #     def ndt_pose_cb(self, msg):
 #         pose_entry = {
@@ -535,10 +525,6 @@ class control_planner(pt.behaviour.Behaviour):
 #             self.start_pose = msg
 #             rospy.loginfo(f"[Mission] Start position saved: ({self.start_pose.pose.position.x:.2f}, {self.start_pose.pose.position.y:.2f})")
             
-#         # Reset once we start getting valid messages again
-#         if self.has_published:
-#             rospy.loginfo("[CheckRobotPose] /robot_pose active again — reset republish flag.")
-#             self.has_published = False
     
 #     def save_pose_history(self):
 #         try:
@@ -733,100 +719,6 @@ class control_planner(pt.behaviour.Behaviour):
                 
 #         rospy.loginfo_throttle(5, f"[goal_reached] {self.c_goal.mission_phase} {target_description} goal not reached yet. Distance: {distance:.2f}m")
 #         return pt.common.Status.FAILURE
-
-
-# class check_localization(pt.behaviour.Behaviour):
-#     def __init__(self, c_goal):
-#         super(check_localization, self).__init__("CheckLocalization")
-#         self.c_goal = c_goal
-#         self.max_score = 0.5
-#         self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
-
-#     def update(self):
-#         if self.c_goal.transform_probability is None:
-#             rospy.logwarn("[CheckLocalization] No localization score received")
-#             return pt.common.Status.RUNNING
-
-#         if self.c_goal.transform_probability <= self.max_score:
-#             rospy.loginfo(f"[CheckLocalization] Good localization score: {self.c_goal.transform_probability}")
-            
-#             # Only publish to robot_pose when we have good localization
-#             if self.c_goal.robot_pose:
-#                 # Convert quaternion to yaw for controller compatibility
-#                 pose_msg = PoseStamped()
-#                 pose_msg.header = self.c_goal.robot_pose.header
-#                 pose_msg.pose.position = self.c_goal.robot_pose.pose.position
-                
-#                 # Convert quaternion to yaw and store in orientation.z
-#                 yaw = self.quaternion_to_yaw(self.c_goal.robot_pose.pose.orientation)
-#                 pose_msg.pose.orientation.z = yaw
-                
-#                 self.robot_pose_pub.publish(pose_msg)
-#                 rospy.loginfo_throttle(5, "[CheckLocalization] Publishing valid pose to /robot_pose")
-            
-#             return pt.common.Status.SUCCESS
-#         else:
-#             rospy.logwarn(f"[CheckLocalization] Poor localization score: {self.c_goal.transform_probability}")
-#             return pt.common.Status.FAILURE
-
-
-# class recover_localization(pt.behaviour.Behaviour):
-#     def __init__(self, c_goal):
-#         super(recover_localization, self).__init__("RecoverLocalization")
-#         self.c_goal = c_goal
-#         self.robot_pose_pub = rospy.Publisher('/robot_pose', PoseStamped, queue_size=10)
-#         self.initial_pose_pub = rospy.Publisher('/initial_pose', PoseStamped, queue_size=10)
-
-#     def initialise(self):
-#         """Reset when behavior starts"""
-#         rospy.loginfo("[RecoverLocalization] Starting localization recovery")
-
-#     def update(self):
-#         # Get last good pose from history
-#         last_good = self.c_goal.get_last_good_pose()
-#         if not last_good:
-#             rospy.logwarn("[RecoverLocalization] No good pose found in history")
-#             return pt.common.Status.RUNNING
-
-#         # Create PoseStamped message from last good pose
-#         robot_pose = PoseStamped()
-#         robot_pose.header.frame_id = "map"
-#         robot_pose.header.stamp = rospy.Time.now()
-#         robot_pose.pose.position.x = last_good["pose"]["position"]["x"]
-#         robot_pose.pose.position.y = last_good["pose"]["position"]["y"]
-#         robot_pose.pose.position.z = last_good["pose"]["position"]["z"]
-        
-#         # Convert stored quaternion to yaw
-#         orientation = last_good["pose"]["orientation"]
-#         yaw = self.quaternion_to_yaw(orientation)
-#         robot_pose.pose.orientation.z = yaw
-        
-#         # Publish to robot_pose for other nodes to use
-#         self.robot_pose_pub.publish(robot_pose)
-
-#         # Also publish to initial_pose for AMCL/localization reset (with full quaternion)
-#         initial_pose = PoseStamped()
-#         initial_pose.header.frame_id = "map"
-#         initial_pose.header.stamp = rospy.Time.now()
-#         initial_pose.pose.position.x = last_good["pose"]["position"]["x"]
-#         initial_pose.pose.position.y = last_good["pose"]["position"]["y"]
-#         initial_pose.pose.position.z = last_good["pose"]["position"]["z"]
-#         initial_pose.pose.orientation.x = orientation["x"]
-#         initial_pose.pose.orientation.y = orientation["y"]
-#         initial_pose.pose.orientation.z = orientation["z"]
-#         initial_pose.pose.orientation.w = orientation["w"]
-        
-#         self.initial_pose_pub.publish(initial_pose)
-
-#         # rospy.loginfo_throttle(2, f"[RecoverLocalization] Publishing last good pose (score: {last_good['fitness_score']}) to robot_pose and initial_pose")
-
-#         # Check if localization has improved
-#         if self.c_goal.transform_probability is not None and self.c_goal.transform_probability <= 0.5:
-#             rospy.loginfo("[RecoverLocalization] Localization recovered successfully!")
-#             return pt.common.Status.SUCCESS
-
-#         rospy.loginfo_throttle(2, f"[RecoverLocalization] Still recovering... current score: {self.c_goal.transform_probability}")
-#         return pt.common.Status.RUNNING
 
 
 if __name__ == "__main__":
