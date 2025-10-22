@@ -3,7 +3,7 @@
   <include file="$(find pluto)/launch/pluto_no_joy.launch" />
 
   <!-- Launch VectorNav -->
-  <include file="$(find vectornav)/launch/vectornav.launch" />
+  <!-- <include file="$(find vectornav)/launch/vectornav.launch" /> -->
 
   <!-- Launch RealSense -->
   <include file="$(find realsense2_camera)/launch/rs_rgbd.launch" />

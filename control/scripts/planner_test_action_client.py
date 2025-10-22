@@ -59,7 +59,9 @@ def send_test_goal():
     # This is a list of simple (x, y) coordinates
     waypoints_coords = [
         (120,65), 
-        (119.5, 56), 
+        (119.5, 50), 
+        (120, 34), 
+
         (140, 30), 
         (190,10), 
         (170,-50), 

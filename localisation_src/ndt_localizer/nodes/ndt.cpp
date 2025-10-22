@@ -13,6 +13,7 @@ NdtLocalizer::NdtLocalizer(ros::NodeHandle &nh, ros::NodeHandle &private_nh):nh_
   transform_probability_pub_ = nh_.advertise<std_msgs::Float32>("transform_probability", 10);
   iteration_num_pub_ = nh_.advertise<std_msgs::Float32>("iteration_num", 10);
   diagnostics_pub_ = nh_.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
+  converged_pub_ = nh_.advertise<std_msgs::Bool>("is_converged", 10);
 
   // Subscribers
   initial_pose_sub_ = nh_.subscribe("initialpose", 100, &NdtLocalizer::callback_init_pose, this);
@@ -258,6 +259,9 @@ void NdtLocalizer::callback_pointcloud(
 
   // publish tf(map frame to base frame)
   publish_tf(map_frame_, base_frame_, result_pose_stamped_msg);
+  std_msgs::Bool converged_msg;
+  converged_msg.data = is_converged;
+  converged_pub_.publish(converged_msg);
 
   // publish aligned point cloud
   pcl::PointCloud<pcl::PointXYZ>::Ptr sensor_points_mapTF_ptr(new pcl::PointCloud<pcl::PointXYZ>);

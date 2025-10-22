@@ -15,6 +15,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Float32.h>
+#include <std_msgs/Bool.h>
 
 #include <tf2/transform_datatypes.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -52,6 +53,7 @@ private:
     ros::Publisher transform_probability_pub_;
     ros::Publisher iteration_num_pub_;
     ros::Publisher diagnostics_pub_;
+    ros::Publisher converged_pub_;
 
     //pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
     pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
