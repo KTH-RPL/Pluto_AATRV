@@ -165,6 +165,7 @@ class PreviewController {
         bool path_generated_;
         ros::Timer control_timer_;
         double lookahead_obstacle_buffer_;
+        int lookahead_jump_;
 
         // <<< NEW: Parameters for density-based controller switching
         double density_check_radius_;

@@ -115,6 +115,8 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     nh_.param("preview_controller/use_start_top", use_start_stop, true);
 
     nh_.param("preview_controller/lookahead_obstacle_buffer", lookahead_obstacle_buffer_, 1.0); // e.g., 1.0 meter
+    nh_.param("preview_controller/lookahead_jump", lookahead_jump_, 2);
+
 
     // Calculate the velocity and omega acceleration bounds for timestep
     vel_acc_bound = vel_acc_ * dt_;
@@ -562,32 +564,50 @@ bool PreviewController::run_control(bool is_last_goal) {
     robot_theta = current_pose.pose.orientation.z;
 
 
-    // Changed until point is only in front of robot
-    while ((targetid + 1 < max_path_points) && (chkside(current_path[targetid].theta))) {
-        targetid++;
-    }
-
-    // Gets the lookahead point by distance first
-    while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
-        targetid++;
-    }
+    // Calculate obstacle density
     double obstacle_density = dwa_controller_ptr->calculate_local_obstacle_density(
         robot_x, robot_y, density_check_radius_, density_obstacle_thresh_
     );
 
-    // Advance lookahead if point lies in obstacle cells (cost >= 50)
     if (dwa_controller_ptr && dwa_controller_ptr->costmap_received_) {
+        // This loop finds the first valid point that is:
+        // 1. In front of the robot (chkside)
+        // 2. Far enough away (lookahead_distance_)
+        // 3. Not in a lethal obstacle
         while (targetid + 1 < max_path_points) {
+
+            // Condition 1: Is the point behind the robot?
+            if (chkside(current_path[targetid].theta)) {
+                targetid++; // Advance and check the next point
+                continue;
+            }
+
+            // Condition 2: Is the point too close?
+            double dist_to_target = distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y);
+            if (dist_to_target < lookahead_distance_) {
+                targetid++; // Advance and check the next point
+                continue;
+            }
+
+            // Condition 3: Is the point in an obstacle?
             double lx = current_path[targetid].x;
             double ly = current_path[targetid].y;
             double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y, robot_theta);
             if (c >= 50.0) {
                 ROS_INFO_THROTTLE(1.0, "Lookahead at idx %d in obstacle (cost=%f). Advancing.", targetid, c);
-                targetid++;
+                
+                // Use the fast "jump" optimization
+                targetid += lookahead_jump_; 
+                
+                if (targetid >= max_path_points) {
+                    targetid = max_path_points - 1;
+                }
                 continue;
             }
             break;
         }
+
+        
         double buffer_dist_travelled = 0.0;
         int buffered_idx = targetid; // Start from the safe point
 
@@ -597,10 +617,10 @@ bool PreviewController::run_control(bool is_last_goal) {
             double next_c = dwa_controller_ptr->query_cost_at_world(next_lx, next_ly, robot_x, robot_y, robot_theta);
             
             if (next_c >= 50.0) {
-                // The buffer zone hit another obstacle. Stop here (at the current safe 'buffered_idx').
+                // The buffer zone hit another obstacle. Stop here.
                 break;
             }
-            // If it's safe, add the distance and advance
+
             double segment_dist = distancecalc(
                 current_path[buffered_idx].x, current_path[buffered_idx].y,
                 current_path[buffered_idx + 1].x, current_path[buffered_idx + 1].y
@@ -608,10 +628,20 @@ bool PreviewController::run_control(bool is_last_goal) {
             buffer_dist_travelled += segment_dist;
             buffered_idx++;
         }
-
+        
+        // Final update
         if (targetid != buffered_idx) {
              ROS_INFO("Lookahead advanced from %d to %d to clear obstacle with buffer.", targetid, buffered_idx);
              targetid = buffered_idx;
+        }
+
+    } else {
+        // Fallback if no costmap: just run the two original, non-obstacle loops
+        while ((targetid + 1 < max_path_points) && (chkside(current_path[targetid].theta))) {
+            targetid++;
+        }
+        while ((targetid + 1 < max_path_points) && (distancecalc(robot_x, robot_y, current_path[targetid].x, current_path[targetid].y) < lookahead_distance_)) {
+            targetid++;
         }
     }
 
@@ -893,7 +923,9 @@ void PreviewController::compute_control(double cross_track_error, double heading
     }
 
     Eigen::VectorXd curv_vec = Eigen::Map<Eigen::VectorXd>(preview_curv.data(), preview_steps_ + 1);
+    
     calcGains();
+
     double u_fb = -(Kb_ * x_state)(0);
     double u_ff = -(Kf_ * curv_vec)(0);
     omega_ = u_fb + u_ff;
@@ -1014,6 +1046,7 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/linear_velocity", ref_velocity_, 0.3);
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
+
     
     occ_sub_ = nh_.subscribe("/global_costmap", 1, &dwa_controller::costmap_callback, this);
     
