@@ -2,7 +2,6 @@
     <!-- ================================================================== -->
     <!-- Helper & Pose Nodes (unchanged) -->
     <!-- ================================================================== -->
-    <node name="corrected_robot_pose_publisher" pkg="detector" type="pose_corrector.py" output="screen"/>
 
     <!-- ================================================================== -->
     <!-- Obstacle Detector Node with Profiler -->
@@ -41,7 +40,7 @@
     <!-- ================================================================== -->
     <!-- We also profile the costmap node.
          The profile data will be saved to 'costmap.prof' inside your 'detector' package directory. -->
-    <node pkg="detector" type="costmap.py" name="global_costmap_generator" output="screen">
+    <node pkg="detector" type="costmap_opt.py" name="global_costmap_generator" output="screen">
 
         <!-- ... (parameters are unchanged) ... -->
         <param name="obstacle_topic" value="/detected_obstacles" />
@@ -53,7 +52,7 @@
         <param name="inflation_radius" value="0.5" />
         <param name="gradient_end_radius" value="1" />
         <param name="max_cost" value="100" />
-        <param name="memory_duration" value="5.0" />
+        <param name="memory_duration" value="2.0" />
     </node>
 
     <!-- ================================================================== -->

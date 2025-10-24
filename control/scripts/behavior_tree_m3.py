@@ -149,13 +149,11 @@ class goal_robot_condition():
     def get_last_good_pose(self):
         """Get the most recent pose that had a good score (<= 4.2)."""
         if self.last_good_pose:
+            rospy.loginfo("last_good pose is not NONE")
             return self.last_good_pose
-        
-        for pose in reversed(self.valid_poses):
-            if pose["fitness_score"] <= 0.5:
-                self.last_good_pose = pose
-                return pose
-        return None
+        else:
+            rospy.loginfo("last_good pose is NONE!!!!!!!!!!!!!!!")
+            return None
 
     def save_last_pose_on_shutdown(self):
         rospy.loginfo("Saving last robot pose on shutdown.")
@@ -197,7 +195,6 @@ class goal_robot_condition():
             self.original_goals = pose_array  # Store original for potential reset
             rospy.loginfo(f"[Behaviour Tree] Received {len(self.goals.poses)} goals for GOAL mission.")
     
-    
 class check_localization(pt.behaviour.Behaviour):
     def __init__(self, c_goal):
         super(check_localization, self).__init__("CheckLocalization")
@@ -227,11 +224,11 @@ class check_localization(pt.behaviour.Behaviour):
 
                     self.initial_pose_pub.publish(pose_msg)
                     self.c_goal.has_published = True
-                    rospy.loginfo("[CheckLocalization] Published last valid pose to /initialpose for relocalization.")
+                    rospy.logerr("[CheckLocalization] Published last valid pose to /initialpose for relocalization.")
                 except Exception as e:
                     rospy.logwarn(f"[CheckLocalization] Failed to publish last valid pose: {e}")
             else:
-                rospy.logwarn("[CheckLocalization] No last valid pose found in history to publish.")
+                rospy.logwarn(f"[CheckLocalization] has_published:{self.c_goal.has_published}, and last_valid_pose : {bool(last_valid_pos)}")
 
             return pt.common.Status.FAILURE
 

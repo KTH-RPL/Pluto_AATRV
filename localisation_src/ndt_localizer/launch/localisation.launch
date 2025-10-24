@@ -22,6 +22,6 @@
     <arg name="enable_recording" default="true" />
     <node if="$(arg enable_recording)" pkg="rosbag" type="record" name="rosbag_recorder" 
           args="-o $(arg bag_prefix) 
-                /transform_probability /exe_time_ms"
+                /transform_probability /exe_time_ms  "
           output="screen" />
 </launch>

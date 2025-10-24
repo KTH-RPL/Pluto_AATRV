@@ -23,10 +23,9 @@ class WaypointPublisher:
 
         # The list of waypoint coordinates (x, y)
         self.waypoints_coords = [
-            (120,65), 
+            (120,65),
             (119.5, 50), 
-            (120, 34), 
-
+            (120, 37), 
             (140, 30), 
             (190,10), 
             (170,-50), 

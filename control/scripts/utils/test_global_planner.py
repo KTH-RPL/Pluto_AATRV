@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-from global_planner import execute_global_planning, rrt_planner, is_node_valid, is_line_of_sight
+from global_planner_test import execute_global_planning, rrt_planner, is_node_valid, is_line_of_sight
 import math
 import gmap_utility
 
@@ -12,7 +12,18 @@ def main():
     # Define start and goal points (x, y, theta)
     start = (138, 82)
     # goals = [(25,-110)]
-    goals = [(120,65), (119.5, 56), (140, 30), (190,10), (170,-50), (145,-60), (121,-105), (100,-136), (25,-110)] # (120, 65), (120, 50), (140, 30), (190,10), (170,-50), (145,-60)
+    goals = [
+            (120,65),
+            (119.5, 50), 
+            (120, 37), 
+            (140, 30), 
+            (190,10), 
+            (170,-50), 
+            (145,-60), 
+            (121,-105), 
+            (100,-136), 
+            (25,-110)
+        ]
     robot_radius = 1.2
 
     # Use real obstacles from the polygon_map in global_planner.py
