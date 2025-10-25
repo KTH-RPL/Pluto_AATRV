@@ -36,29 +36,29 @@ Follow these steps sequentially. It is recommended to run each command in a new 
 
 **2\. Launch Localization Node**
 
-> roslaunch ndt\_localizer localization.launch
+`roslaunch ndt\_localizer localization.launch`
 
 **3\. Launch Publishers Node**
 
-> roslaunch robot\_controller main\_publishers.launch
+`roslaunch robot\_controller main\_publishers.launch`
 
 **4\. Launch Controller Node (for Behavior Tree)**
 
-> roslaunch robot\_controller main\_controller\_bt.launch
+`roslaunch robot\_controller main\_controller\_bt.launch`
 
 **5\. Launch Global Planner Action Server**
 
-> roslaunch robot\_controller global\_planner.launch
+`roslaunch robot\_controller global\_planner.launch`
 
 **6\. Run Behavior Tree**
 
-> python3 /catkin\_noetic\_ws/src/Pluto\_AATRV/control/scripts/behavior\_tree\_m2.py
+`python3 /catkin\_noetic\_ws/src/Pluto\_AATRV/control/scripts/behavior\_tree\_m2.py`
 
 ### **Method 2: Manual Joystick Control**
 
 To drive the robot manually using a joystick, run the following single command:
 
-> roslaunch pluto pluto.launch  
+`roslaunch pluto pluto.launch`
 
 ## **Changelog After Demo 24 October 2025**
 1. Rename test1.launch to main_publishers.launch
