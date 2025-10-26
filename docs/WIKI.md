@@ -397,7 +397,22 @@ The behavior tree maintains shared state through `goal_robot_condition`:
 - **Control Failure**: Service returns status code for error handling
 
 ---
+#### Regarding the behaviour_tree_m3 file
+In this version of the behavior tree, the robot successfully reaches the GOAL and generates the reversed HOME path, but it doesn’t start moving back home.
+The reason is that the control_planner node’s service (run_control) returns SUCCESS once the robot reaches the final goal.
+This causes the behavior tree to treat the entire mission as finished, so the HOME path execution never starts.
 
+**Possible causes:**
+- Control service completes after goal reached
+- Behavior tree flow stops prematurely  
+- HOME path not activated
+
+**Potential solutions:**
+- Modify control service to handle phase transitions
+- Check goal_reached returns FAILURE when switching to HOME
+- Ensure global_path_client publishes the reversed path
+
+For the last demo, we skipped the return-to-home behavior and did not debug this issue, but you can reproduce and debug it easily by running this version.
 ## API Reference
 
 ### ROS Topics
