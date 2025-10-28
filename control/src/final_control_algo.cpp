@@ -138,13 +138,14 @@ PreviewController::PreviewController(double v, double dt, int preview_steps)
     }
 }
 
+// To stop run_control execution in standalone for debugging 
 void PreviewController::stop_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
     if (msg->data) {
         start_moving_ = false;
     }
 }
 
-
+// To start run_control execution in standalone 
 void PreviewController::start_moving_callback(const std_msgs::Bool::ConstPtr& msg) {
     if (msg->data) {
         start_moving_ = true;
@@ -160,12 +161,6 @@ void PreviewController::global_path_callback(const nav_msgs::Path::ConstPtr& msg
         ROS_WARN("Received an empty path. Ignoring.");
         return;
     }
-
-    // // --- Safety Check 2: Path too short ---
-    // if (msg->poses.size() < 2) {
-    //     ROS_WARN("Received a path with only one pose. A valid path needs at least 2 poses. Ignoring.");
-    //     return;
-    // }
 
     // Stop the robot for safety before switching paths
     ROS_INFO("Switching to new path. Stopping robot for safety.");
@@ -209,6 +204,8 @@ void PreviewController::global_path_callback(const nav_msgs::Path::ConstPtr& msg
         delete dwa_controller_ptr;
         dwa_controller_ptr = nullptr;
     }
+
+    // Initialize pointer for dwa controller 
     initialize_dwa_controller();
 
     // Publish the new path for visualization
@@ -227,7 +224,7 @@ void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::Co
         return; // Skip this message
     }
 
-    // --- MODIFIED --- Generate path only if not using an external path
+    // Generate path only if not using an external path
     if (!initial_pose_received_) {
         initial_pose_received_ = true;
         ROS_INFO("Initial robot pose received: x=%.2f, y=%.2f, theta=%.2f", robot_x, robot_y, robot_theta);
@@ -247,6 +244,7 @@ void PreviewController::robot_pose_callback(const geometry_msgs::PoseStamped::Co
 
             initialize_dwa_controller();
             path_generated_ = true;
+            // Calculate curvatures for the generated path
             calculate_all_curvatures();
             publish_path();
         } else {
@@ -300,9 +298,7 @@ void PreviewController::generate_snake_path(double start_x, double start_y, doub
         }
         // last point: copy previous orientation
         current_path[num_points - 1].theta = current_path[num_points - 2].theta;
-        
-        // Don't override the first point - it already has the correct orientation
-        // pointing toward the second point from the loop above
+
     }
 
     max_path_points = current_path.size();
@@ -383,12 +379,18 @@ double PreviewController::distancecalc(double x1, double y1, double x2, double y
 
 // Only changes when velocity changes, can put condition on prev vel diff to reduce computation time
 void PreviewController::calcGains() {
+    // State space equation matrices
+
+    // Matrix for state x = [ey, etheta, omega]
     A_ << 0, 1, 0,
           0, 0, v_,
           0, 0, 0;
+    // Matrix for omega
     B_ << 0,
           0,
           1;
+
+    // Matrix for disturbance (curvature input)
     D_ << 0,
           -(v_ * v_),
           -v_;
@@ -399,6 +401,8 @@ void PreviewController::calcGains() {
     Q_(2, 2) = Q_params_[2];
     R_ << R_param_;
 
+
+    // Discretize matrices
     A_ = Eigen::Matrix3d::Identity() + A_ * dt_;
     B_ = B_ * dt_;
     D_ = D_ * dt_;
@@ -416,6 +420,7 @@ void PreviewController::calcGains() {
     }
 
     Eigen::Matrix3d lambda0 = A_.transpose() * (Eigen::Matrix3d::Identity() + P * B_ * R_.inverse() * B_.transpose()).inverse();
+    // Normal feedback law
     Kb_ = (R_ + B_.transpose() * P * B_).inverse() * B_.transpose() * P * A_;
 
     Pc_ = Eigen::MatrixXd::Zero(3, preview_steps_ + 1);
@@ -430,11 +435,11 @@ void PreviewController::calcGains() {
 
     Eigen::MatrixXd Kf_term = Pc_ * Lmatrix_;
     Kf_term.col(0) += P * D_;
-
+    // Feedforward computed term
     Kf_ = (R_ + B_.transpose() * P * B_).inverse() * B_.transpose() * Kf_term;
 }
 
-// Depends on path size, either calculate all curvature at once, for now called for each point
+// Calculate curvature using three points
 double PreviewController::calculate_curvature(std::vector<double> x, std::vector<double> y) {
     double curvature = 0.0;
     if (x.size() < 3) return curvature;
@@ -486,11 +491,13 @@ void PreviewController::calculate_all_curvatures() {
     ROS_INFO("Calculated curvatures for %d path points", max_path_points);
 }
 
+// Cross track error calculation
 double PreviewController::cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref) {
     double cte = (y_ref - y_r) * std::cos(theta_ref) - (x_ref - x_r) * std::sin(theta_ref);
     return -cte;
 }
 
+// Lookahead heading error calculation
 void PreviewController::lookahead_heading_error(double x_ref, double y_ref, double theta_ref) {
     double dx = x_ref - robot_x;
     double dy = y_ref - robot_y;
@@ -518,7 +525,7 @@ void PreviewController::lookahead_heading_error(double x_ref, double y_ref, doub
     }
 }
 
-// Need to check if called only once every iteration, else can shift more than the acc_bound
+// Bound velocity and Omega limits based on acceleration limits, can be improvised in main control call
 void PreviewController::boundvel(double ref_vel) {
     // Safety check for NaN
     if (std::isnan(ref_vel) || std::isinf(ref_vel)) {
@@ -557,7 +564,7 @@ void PreviewController::boundomega(double ref_omega) {
 }
 
 
-// Changed from NavigationSystem to PreviewController, main control loop
+// Main Run control function called by behaviour tree or standalone
 bool PreviewController::run_control(bool is_last_goal) {
     ROS_INFO("Running run control");
     bool bounded_vel = false;
@@ -597,7 +604,7 @@ bool PreviewController::run_control(bool is_last_goal) {
             }
 
             // Condition 3: Is the point in an obstacle?
-            // This check only runs if Conditions 1 & 2 are false (optimized)
+            // This check only runs if Conditions 1 & 2 are false 
             double lx = current_path[targetid].x;
             double ly = current_path[targetid].y;
             double c = dwa_controller_ptr->query_cost_at_world(lx, ly, robot_x, robot_y, robot_theta);
@@ -720,7 +727,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     //         use_preview = false; // stay on DWA
     //     }
     // }
-    // Note: Uncomment below to switch based on obstacle density instead of cost
+    // Note: Uncomment Above to switch based on cost instead of obstacle density
     if (active_controller_ == std::string("PREVIEW")) {
         if (obstacle_density > density_dwa_activation_thresh_) {
             use_preview = false; // switch to DWA
@@ -747,6 +754,7 @@ bool PreviewController::run_control(bool is_last_goal) {
     geometry_msgs::PoseStamped look_pose;
     double lookahead_theta;
 
+    // Uses DWA
     if (!use_preview) {
         // MOVE DWA RESULT TO HERE
         DWAResult dwa_result = dwa_controller_ptr->dwa_main_control(robot_x, robot_y, robot_theta, v_, omega_);
@@ -766,7 +774,6 @@ bool PreviewController::run_control(bool is_last_goal) {
         if (!bounded_vel)
             // Increase vel to the target vel
             boundvel(linear_velocity_);
-        // heading_error_ = robot_theta - current_path[targetid].theta; 
         heading_error_ =  lookahead_heading_error_;
         if (heading_error_ > M_PI) {
             heading_error_ -= 2 * M_PI;
@@ -780,7 +787,7 @@ bool PreviewController::run_control(bool is_last_goal) {
         heading_error_pub_.publish(he_msg);
         // -----------------------------
 
-        // Calls to compute the omega
+        // Calls to compute the omega using preview controller
         compute_control(cross_track_error_, heading_error_, path_curvature_);
         
         // --- PUBLISH PATH CURVATURE ---
@@ -821,21 +828,6 @@ bool PreviewController::run_control(bool is_last_goal) {
     // ---------------------------------------
 
     // // Publish the lookahead point based on active controller
-    // geometry_msgs::PoseStamped look_pose;
-    // double lookahead_theta;
-    // if (active_controller_ == "DWA") {
-    //     // Use DWA's lookahead point with orientation from the path
-    //     look_pose.pose.position.x = dwa_result.lookahead_x;
-    //     look_pose.pose.position.y = dwa_result.lookahead_y;
-    //     look_pose.pose.position.z = 0.0;
-    //     lookahead_theta = dwa_result.lookahead_theta;
-    // } else {
-    //     // Use Preview Controller's lookahead point
-    //     look_pose.pose.position.x = current_path[targetid].x;
-    //     look_pose.pose.position.y = current_path[targetid].y;
-    //     look_pose.pose.position.z = 0.0;
-    //     lookahead_theta = current_path[targetid].theta;
-    // }
     // Convert yaw angle to quaternion
     look_pose.pose.orientation.x = 0.0;
     look_pose.pose.orientation.y = 0.0;
@@ -1071,10 +1063,10 @@ dwa_controller::dwa_controller(const std::vector<Waypoint>& path, int& target_id
     nh_.param("preview_controller/collision_robot_coeff", collision_robot_coeff, 2.0);
     nh_.param("preview_controller/collision_obstacle_coeff", collision_obstacle_coeff, 2.0);
 
-    
+    // Call back for costmap 
     occ_sub_ = nh_.subscribe("/global_costmap", 1, &dwa_controller::costmap_callback, this);
     
-    // --- NEW --- Initialize visualization publisher
+    // Initialize visualization publisher
     traj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("dwa_trajectories", 1);
 }
 
@@ -1151,22 +1143,12 @@ bool dwa_controller::worldToCostmap(double wx, double wy, int& mx, int& my, doub
     if (!costmap_received_)
         return false;
 
-    // Calculate relative x and y to robot, get odom pose diff
-    // double dx = wx - robot_x;
-    // double dy = wy - robot_y;
-    
-    // // Convert it to base Link by applying rotation.
-    // double rel_x = dx * cos(robot_yaw) + dy * sin(robot_yaw); // forward axis
-    // double rel_y = -dx * sin(robot_yaw) + dy * cos(robot_yaw); // left axis
 
     // Get origin and resolution of costmap 
     double origin_x = occ_grid_.info.origin.position.x;
     double origin_y = occ_grid_.info.origin.position.y;
     double resolution = occ_grid_.info.resolution;
 
-    // // Convert to costmap indices
-    // mx = static_cast<int>((rel_x - origin_x) / resolution);
-    // my = static_cast<int>((rel_y - origin_y) / resolution);
 
     // Convert to costmap indices (GLOBAL FRAME COSTMAP)
     mx = static_cast<int>((wx - origin_x) / resolution);
@@ -1265,8 +1247,6 @@ double dwa_controller::calculate_local_obstacle_density(double robot_x, double r
 std::vector<double> dwa_controller::calc_dynamic_window(double v, double omega) {
     std::vector<double> Vs = {min_speed_, max_speed_, -max_omega_, max_omega_};
     std::vector<double> Vd = {v - vel_acc_ * dt_dwa_, v + vel_acc_ * dt_dwa_, omega - omega_acc_ * dt_dwa_, omega + omega_acc_ * dt_dwa_};
-    // v_min = max(Vs_min, Vd_min), v_max = min(Vs_max, Vd_max)
-    // o_min = max(Vs_o_min, Vd_o_min), o_max = min(Vs_o_max, Vd_o_max)
     std::vector<double> vr = {std::max(Vs[0], Vd[0]), std::min(Vs[1], Vd[1]), std::max(Vs[2], Vd[2]), std::min(Vs[3], Vd[3])};
     return vr;
 }
@@ -1329,15 +1309,6 @@ double dwa_controller::calc_lookahead_heading_cost() {
         temp_look_ahead_idx = std::min(temp_look_ahead_idx + lookahead_jump_, max_index);
     }
 
-
-
-    // Check if lookahead point is too close to an obstacle
-    // while(temp_look_ahead_idx +1 < (*current_path_).size() && (query_cost_at_world((*current_path_)[temp_look_ahead_idx].x, (*current_path_)[temp_look_ahead_idx].y, final_x, final_y, ) > lookahead_obstacle_cost_thresh_)) {
-    //     temp_look_ahead_idx++;
-    // }
-
-    // temp_look_ahead_idx = -1; // Use Goal Point as lookahead
-
     temp_lookahead_x = (*current_path_)[temp_look_ahead_idx].x;
     temp_lookahead_y = (*current_path_)[temp_look_ahead_idx].y;
     temp_lookahead_theta = (*current_path_)[temp_look_ahead_idx].theta;
@@ -1378,17 +1349,9 @@ double dwa_controller::calc_lookahead_cost() {
         return 0.0;
 
     auto last_point = traj_list_.back();
-    // auto last_point = traj_list_[-1]
     double traj_x = last_point[0];
     double traj_y = last_point[1];
     int current_target = *target_idx_;
-
-    // if (current_target < *max_path_points_) {
-    //     double tx = (*current_path_)[current_target].x;
-    //     double ty = (*current_path_)[current_target].y;
-    //     return std::hypot(traj_x - tx, traj_y - ty);
-    // }
-    // return 0.0;
 
     // Use the dynamic lookahead point's coordinates, which were
     // set by calc_lookahead_heading_cost()
@@ -1425,7 +1388,6 @@ double dwa_controller::calc_obstacle_cost() {
     return avg_cost;
 }
 
-// --- MODIFIED ---
 // Exponential penalty for moving through high-cost areas.
 // CHANGED: Use MAX instead of AVERAGE to avoid diluting the penalty.
 double dwa_controller::calc_away_from_obstacle_cost() {
@@ -1487,7 +1449,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
     double best_lookahead_y = 0.0;
     double best_lookahead_theta = 0.0;
 
-    // --- NEW --- For logging the cost matrix
+    // For logging the cost matrix
     struct DWASample {
         double v;
         double omega;
@@ -1497,13 +1459,12 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
         double path_cost;
     };
     std::vector<DWASample> all_samples;
-    // --- END NEW ---
 
-    // --- MODIFIED --- Visualization Setup
+
+    // Visualization Setup
     visualization_msgs::MarkerArray traj_markers;
     int marker_id = 0;
     int best_marker_id = -1; // Keep track of the best marker
-    // --- END MODIFIED ---
 
     for (int i = 0; i < vx_samples_; ++i) {
         double v_sample = dw[0] + (dw[1] - dw[0]) * i / std::max(1, vx_samples_ - 1);
@@ -1520,11 +1481,11 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             double away_cost = calc_away_from_obstacle_cost();
 
             double total_cost = path_distance_bias_ * path_cost // Path Cost
-            + lookahead_heading_bias_ * lookahead_heading_cost 
+            + lookahead_heading_bias_ * lookahead_heading_cost // Lookahead Heading Cost
             + goal_distance_bias_ * lookahead_cost // Goal Cost
-            + occdist_scale_ * obs_cost 
-            + speed_ref_bias_ * speed_ref_cost 
-            + away_bias_ * away_cost; // Away Cost
+            + occdist_scale_ * obs_cost // Obstacle Cost
+            + speed_ref_bias_ * speed_ref_cost // Can be experimented with
+            + away_bias_ * away_cost; // Away Cost exponential
             
             all_samples.push_back({
                 v_sample, 
@@ -1540,20 +1501,14 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 "--- Trajectory Cost Details ---\n"
                 "\tv_sample = %.2f, omega_sample = %.2f\n"
                 "\tPath Cost      (bias * cost): %.2f * %.2f = %.2f\n"
-                // "\tLh headin Cost (bias * cost): %.2f * %.2f = %.2f\n"
                 "\tGoal Cost      (bias * cost): %.2f * %.2f = %.2f\n"
-                // "\tObstacle Cost  (bias * cost): %.2f * %.2f = %.2f\n"
-                // "\tSpeed Ref Cost (bias * cost): %.2f * %.2f = %.2f\n"
                 "\tAway Cost      (bias * cost): %.2f * %.2f = %.2f\n"
                 "----------------------------------\n"
                 "\t>>> Total Cost: %.2f",
                 // Arguments for the format string:
                 v_sample, omega_sample,
                 path_distance_bias_, path_cost, path_distance_bias_ * path_cost,
-                // lookahead_heading_bias_, lookahead_heading_cost, lookahead_heading_bias_ * lookahead_heading_cost,
                 goal_distance_bias_, lookahead_cost, goal_distance_bias_ * lookahead_cost,
-                // occdist_scale_, obs_cost, occdist_scale_ * obs_cost,
-                // speed_ref_bias_, speed_ref_cost, speed_ref_bias_ * speed_ref_cost,
                 away_bias_, away_cost, away_bias_ * away_cost,
                 total_cost
             );
@@ -1616,14 +1571,14 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
                 best_lookahead_x = temp_lookahead_x;
                 best_lookahead_y = temp_lookahead_y;
                 best_lookahead_theta = temp_lookahead_theta;
-                // --- NEW --- Store the ID of the best marker
+                // Store the ID of the best marker
                 best_marker_id = traj_marker.id;
-                // --- END NEW ---
+   
             }
         }
     }
     
-    // --- NEW --- Highlight the best trajectory marker
+    //  Highlight the best trajectory marker
     if (best_marker_id != -1) {
         for (auto& marker : traj_markers.markers) {
             if (marker.id == best_marker_id) {
@@ -1636,11 +1591,11 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
             }
         }
     }
-    // --- END NEW ---
+
     
     traj_pub_.publish(traj_markers);
 
-    // --- NEW --- Log the cost matrix for debugging
+    // Log the cost matrix for debugging
     std::stringstream ss;
     ss << "\n--- DWA Trajectory Evaluation Summary ---\n";
     ss << "   v   |  omega  | Goal Cost | Away Cost | Path Cost | Total Cost\n";
@@ -1666,11 +1621,7 @@ DWAResult dwa_controller::dwa_main_control(double x, double y, double theta, dou
         ss << "\n";
     }
     ROS_INFO_STREAM(ss.str());
-    // --- END NEW ---
-
-
     DWAResult result;
-    // ROS_INFO("DWA max obstacle avg cost (0-1) = %f", max_obstacle_cost);
     result.best_v = best_v;
     result.best_omega = best_omega;
     result.obs_cost = occdist_scale_ * max_obstacle_cost;
