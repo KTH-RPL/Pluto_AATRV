@@ -15,7 +15,6 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <string>
 
-// (Waypoint and Obstacle structs are unchanged)
 struct Waypoint {
     double x;
     double y;
@@ -36,7 +35,6 @@ struct Obstacle {
 
 class dwa_controller;
 
-// (DWAResult struct is unchanged)
 struct DWAResult {
     double best_v;
     double best_omega;
@@ -51,7 +49,6 @@ struct DWAResult {
 
 class PreviewController {
     public:
-        // (Public members are unchanged)
         PreviewController(double v = 1.0, double dt = 0.1, int preview_steps = 5);
         bool run_control(bool is_last_goal = false);
         void initialize_dwa_controller();
@@ -86,10 +83,9 @@ class PreviewController {
         ros::Subscriber global_path_sub_;
         void global_path_callback(const nav_msgs::Path::ConstPtr& msg);
         std::string global_path_topic;
-        // (Most private members are unchanged)
         void calcGains();
         double calculate_curvature(const std::vector<double> x, const std::vector<double> y);
-        void calculate_all_curvatures(); // Calculate curvatures for all path points
+        void calculate_all_curvatures();
         void compute_control(double cross_track_error, double heading_error, double path_curvature);
         double distancecalc(double x1, double y1, double x2, double y2);
         bool chkside(double path_theta);
@@ -170,8 +166,6 @@ class PreviewController {
         int control_loop_counter_;
         double prev_v_for_gains_;
         int gain_recalculation_frequency_;
-
-        // <<< NEW: Parameters for density-based controller switching
         double density_check_radius_;
         double density_obstacle_thresh_;
         double density_dwa_activation_thresh_;
@@ -180,17 +174,14 @@ class PreviewController {
 
 class dwa_controller {
     public:
-        // <<< MODIFIED: Removed default constructor, as it's not implemented.
         dwa_controller(const std::vector<Waypoint>& path, int& target_idx, const int& max_points);
         DWAResult dwa_main_control(double x, double y, double theta, double v, double omega);
         ros::Subscriber occ_sub_;
-        ros::Publisher traj_pub_; // <<< FIX: ADDED MISSING DECLARATION
+        ros::Publisher traj_pub_; 
         nav_msgs::OccupancyGrid occ_grid_;
         void costmap_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
         bool costmap_received_ = false;
         double query_cost_at_world(double wx, double wy, double robot_x, double robot_y, double robot_yaw);
-
-        // <<< NEW: Public function to calculate local obstacle density.
         double calculate_local_obstacle_density(double robot_x, double robot_y, double radius, double obstacle_cost_threshold);
 
     private:
@@ -244,12 +235,9 @@ class dwa_controller {
         double cross_track_error(double x_r, double y_r, double x_ref, double y_ref, double theta_ref);
         double calc_lookahead_heading_cost();
         bool chkside(double x1, double y1, double path_theta, double robot_x, double robot_y);
-        // <<< MODIFIED: Corrected function signature to include robot_yaw
         bool worldToCostmap(double wx, double wy, int& mx, int& my, double robot_x, double robot_y, double robot_yaw);
         uint8_t getCostmapCost(int mx, int my);
         void obstacle_callback(const visualization_msgs::MarkerArray::ConstPtr& msg);
         double obstacle_check(double traj_x, double traj_y, double obs_x, double obs_y, double obs_width, double obs_height, double theta_diff);
-
-        // <<< NEW: Helper function for global world -> map conversion
         bool worldToMap(double wx, double wy, int& mx, int& my);
 };
