@@ -84,8 +84,6 @@ add_dependencies(control_service_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${ca
 
 # Install Python scripts
 catkin_install_python(PROGRAMS
-  scripts/control_algo.py
-  scripts/control_test_algo.py
   scripts/robot_simulator.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
